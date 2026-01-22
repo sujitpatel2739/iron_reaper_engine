@@ -1,7 +1,7 @@
 from ironframe import Tensor
 from WrappedLayer import WrappedLayer
 from ResNet import ResBlock
-from LayerObserver import SignalStatsObserver
+from LayerObserver import SignalShapeObserver, SignalStatsObserver
 import numpy as np
 
 class Engine:
@@ -29,24 +29,27 @@ class Engine:
 
 # Drive code ----------------------------------------------------------
 batch_size = 100
-n_layers = 50
-in_features = 0
+n_layers = 20
+in_features = 10
 out_features = 10
 layer_id = 0
 layers = []
 
 for i in range(n_layers):
-    if i < 25:
-        in_features += 10
-        out_features = in_features + 10
+    if i < 10:
+        out_features = in_features + 1
     else:
-        in_features = out_features - 10
-        out_features -= 10
-    
+        out_features = in_features - 1
+
     layers.append(ResBlock(layer_id, in_features, out_features))
-    layer_id += 2    # +2 because ResBlock contains 2 layers: Linear + Relu
+    in_features = out_features
+    layer_id += 3  # linear + relu + optional shortcut
+
     
-observers = [SignalStatsObserver()]
+observers = [
+    SignalStatsObserver(),
+    SignalShapeObserver()
+]
         
 E1 = Engine(
     layers,
@@ -62,9 +65,13 @@ out = E1.forward(X)
 grad_out = Tensor(np.random.randn(*out.data.shape))  # same shape as out
 grad_in = E1.backward(grad_out)
 
-for observer in observers:
-    for layer_id, metrics in observer.logs.items():
-        print(f"Layer {layer_id} stats:")
-        for metric, values in metrics.items():
-            mean_value = np.mean(values)
-            print(f"  {metric}: {mean_value:.4f}")
+for layer_no, layer_id in enumerate(range(0, n_layers*2, 3)):
+    print(f"Layer {layer_no} (ID: {layer_id}):")
+    for observer in observers:
+        observer_name = observer.__class__.__name__
+        print(f" Observer: {observer_name}")
+        for metric, values in observer.logs[layer_id].items():
+            if(observer_name == "SignalStatsObserver"):
+                print(f"    {metric}: {np.mean(values)}")
+            else:
+                print(f"    {metric}: {values}")

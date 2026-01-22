@@ -27,6 +27,28 @@ class Tensor:
 
         for parent, parent_grad in zip(self.parents, grads_to_parents):
             parent.backward(parent_grad)
+            
+    def transpose(self):
+        # 1. Forward Pass: Transpose the data
+        new_data = self.data.T
+        
+        # 2. Create the output tensor
+        out = Tensor(new_data, requires_grad=self.requires_grad)
+        
+        if self.requires_grad:
+            # 3. Build the graph
+            out.parents = [self]
+            
+            # 4. Define the backward function
+            # The gradient flowing back to the input is just the 
+            # transpose of the gradient flowing into the output.
+            def _backward(grad):
+                return [grad.T]
+            
+            out.backward_fn = _backward
+            
+        return out
+       
     
 def add(t1, t2):
     requires_grad = t1.requires_grad or t2.requires_grad
@@ -77,7 +99,7 @@ def matmul(t1, t2):
     if requires_grad:
         out.parents = [t1, t2]
         def backward_fn(grad):            
-            return [np.matmul(grad, t2.data.T), np.matmul(t1.data.t, grad)]
+            return [np.matmul(grad, t2.data.T), np.matmul(t1.data.T, grad)]
         out.backward_fn = backward_fn
     return out
 

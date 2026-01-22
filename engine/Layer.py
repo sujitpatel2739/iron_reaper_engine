@@ -40,8 +40,8 @@ class Linear(Layer):
     
     def backward(self, grad):
         # grad.shape: (batch, out_features)
-        self._cache('out').backward(grad)
-        return self._cache['X'].grad()
+        grad_X = matmul(grad, self.W.transpose())
+        return grad_X
         # grad_input.shape: (batch, in_features)
         
 class Relu(Layer):
