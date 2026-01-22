@@ -43,7 +43,7 @@ for i in range(n_layers):
 
     layers.append(ResBlock(layer_id, in_features, out_features))
     in_features = out_features
-    layer_id += 3  # linear + relu + optional shortcut
+    layer_id += 4  # linear + relu + lnorm + optional shortcut
 
     
 observers = [

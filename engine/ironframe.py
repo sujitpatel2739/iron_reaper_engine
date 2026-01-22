@@ -59,7 +59,17 @@ def add(t1, t2):
             return [grad, grad]
         out.backward_fn = backward_fn
     return out
-    
+
+def sub(t1, t2):
+    requires_grad = t1.requires_grad or t2.requires_grad
+    out = Tensor(t1.data - t2.data, requires_grad=requires_grad)
+    if requires_grad:
+        out.parents = [t1, t2]
+        def backward_fn(grad):
+            return [grad, -grad]
+        out.backward_fn = backward_fn
+    return out
+
 def mul(t1, t2):
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data * t2.data, requires_grad=requires_grad)
@@ -73,6 +83,18 @@ def mul(t1, t2):
         out.backward_fn = backward_fn
     return out
 
+def div(t1, t2):
+    requires_grad = t1.requires_grad or t2.requires_grad
+    out = Tensor(t1.data / t2.data, requires_grad=requires_grad)
+    if requires_grad:
+        out.parents = [t1, t2]
+        def backward_fn(grad):
+            return [
+                grad / t2.data,
+                -grad * t1.data / (t2.data ** 2)
+            ]
+        out.backward_fn = backward_fn
+    return out
 
 def sum(t):
     out = Tensor(np.sum(t.data), requires_grad=t.requires_grad)
@@ -100,6 +122,15 @@ def matmul(t1, t2):
         out.parents = [t1, t2]
         def backward_fn(grad):            
             return [np.matmul(grad, t2.data.T), np.matmul(t1.data.T, grad)]
+        out.backward_fn = backward_fn
+    return out
+
+def sqrt(t):
+    out = Tensor(np.sqrt(t.data), requires_grad=t.requires_grad)
+    if t.requires_grad:
+        out.parents = [t]
+        def backward_fn(grad):            
+            return [grad / (2 * np.sqrt(t.data))]
         out.backward_fn = backward_fn
     return out
 

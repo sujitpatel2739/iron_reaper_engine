@@ -1,4 +1,4 @@
-from Layer import Layer, Linear, Relu
+from Layer import Layer, Linear, Relu, LayerNorm
 from ironframe import add
 
 class ResBlock(Layer):
@@ -6,18 +6,19 @@ class ResBlock(Layer):
         super().__init__(layer_id)
 
         # Residual branch F(x)
-        self.linear1 = Linear(layer_id, in_features, out_features)
+        self.linear = Linear(layer_id, in_features, out_features)
         self.relu = Relu(layer_id + 1)
+        self.lnorm = LayerNorm(layer_id + 2, in_features, 1e-5)
 
         # Shortcut branch S(x)
         if in_features != out_features:
-            self.shortcut = Linear(layer_id + 2, in_features, out_features)
+            self.shortcut = Linear(layer_id + 3, in_features, out_features)
         else:
             self.shortcut = None
 
         # Collect parameters
         self.parameters = []
-        self.parameters += self.linear1.parameters
+        self.parameters += self.linear.parameters
         if self.shortcut:
             self.parameters += self.shortcut.parameters
 
@@ -27,8 +28,9 @@ class ResBlock(Layer):
         self._cache['X'] = X
 
         # Residual path
-        f = self.linear1.forward(X)
+        f = self.linear.forward(X)
         f = self.relu.forward(f)
+        f = self.lnorm(f)
 
         # Shortcut path
         if self.shortcut:
@@ -47,8 +49,9 @@ class ResBlock(Layer):
 
         # ----- Residual path -----
         grad_f = grad
+        grad_f = self.lnorm.backward(grad_f)
         grad_f = self.relu.backward(grad_f)
-        grad_f = self.linear1.backward(grad_f)
+        grad_f = self.linear.backward(grad_f)
 
         # ----- Shortcut path -----
         if self.shortcut:
