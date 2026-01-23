@@ -96,8 +96,8 @@ def div(t1, t2):
         out.backward_fn = backward_fn
     return out
 
-def sum(t):
-    out = Tensor(np.sum(t.data), requires_grad=t.requires_grad)
+def sum(t, axis = 0, keepdims=True):
+    out = Tensor(np.sum(t.data, axis=axis, keepdims=keepdims), requires_grad=t.requires_grad)
     if t.requires_grad:
         out.parents = [t]
         def backward_fn(grad):
@@ -105,9 +105,9 @@ def sum(t):
         out.backward_fn = backward_fn
     return out
 
-def mean(t):
+def mean(t, axis = 0, keepdims=True):
     n = t.data.size
-    out = Tensor(np.sum(t.data)/n, requires_grad=t.requires_grad)
+    out = Tensor(np.sum(t.data, axis=axis, keepdims=keepdims)/n, requires_grad=t.requires_grad)
     if t.requires_grad:
         out.parents = [t]
         def backward_fn(grad):            

@@ -28,7 +28,6 @@ class Engine:
 
 
 # Drive code ----------------------------------------------------------
-batch_size = 100
 n_layers = 20
 in_features = 10
 out_features = 10
@@ -56,6 +55,8 @@ E1 = Engine(
     observers
 )
 
+batch_size = 100
+in_features = 10
 X = Tensor(
     np.random.randn(batch_size, in_features),  # batch_size=32, in_features=10
     requires_grad=True

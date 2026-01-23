@@ -80,12 +80,13 @@ class LayerNorm(Layer):
         # mean over features (per sample)
         mu = mean(X, axis=-1, keepdims=True)
 
-        # variance
+        # varianceo
         X_mu = sub(X, mu)
         var = mean(mul(X_mu, X_mu), axis=-1, keepdims=True)
 
         # normalize
-        std = sqrt(add(var, self.eps))
+        eps = Tensor(np.ones_like(var.data) * self.eps, requires_grad=False)
+        std = sqrt(add(var, eps))
         X_hat = div(X_mu, std)
 
         # affine

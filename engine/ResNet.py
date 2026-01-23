@@ -8,7 +8,7 @@ class ResBlock(Layer):
         # Residual branch F(x)
         self.linear = Linear(layer_id, in_features, out_features)
         self.relu = Relu(layer_id + 1)
-        self.lnorm = LayerNorm(layer_id + 2, in_features, 1e-5)
+        self.lnorm = LayerNorm(layer_id + 2, out_features, 1e-5)
 
         # Shortcut branch S(x)
         if in_features != out_features:
@@ -26,9 +26,9 @@ class ResBlock(Layer):
 
     def forward(self, X):
         self._cache['X'] = X
-
         # Residual path
         f = self.linear.forward(X)
+        print(f.data.shape)
         f = self.relu.forward(f)
         f = self.lnorm(f)
 
