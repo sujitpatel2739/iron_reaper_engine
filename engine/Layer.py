@@ -115,8 +115,15 @@ class LayerNorm(Layer):
         N = X_hat.data.shape[-1]
 
         # gradients for gamma and beta
-        self.gamma.grad += mean(mul(grad, X_hat), axis=0)
-        self.beta.grad  += mean(grad, axis=0)
+        if self.gamma.grad:
+            self.gamma.grad += mean(mul(grad, X_hat), axis=0)
+        else:
+            self.gamma.grad = mean(mul(grad, X_hat), axis=0)
+        if self.beta.grad:
+            self.beta.grad += mean(grad, axis=0)
+        else:
+            self.beta.grad = mean(grad, axis=0)
+            
 
         # grad wrt normalized input
         dX_hat = mul(grad, self.gamma)

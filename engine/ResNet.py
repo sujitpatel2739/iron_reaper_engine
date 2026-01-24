@@ -28,7 +28,6 @@ class ResBlock(Layer):
         self._cache['X'] = X
         # Residual path
         f = self.linear.forward(X)
-        print(f.data.shape)
         f = self.relu.forward(f)
         f = self.lnorm(f)
 
@@ -39,6 +38,8 @@ class ResBlock(Layer):
             s = X
 
         out = add(s, f)
+        self._cache['residual'] = f
+        self._cache['shortcut'] = s
         self._cache['out'] = out
         return out
 

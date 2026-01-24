@@ -49,3 +49,15 @@ class SignalShapeObserver(LayerObserver):
     def on_backward_post(self, layer, grad_out):
         shape = grad_out.data.shape
         self.logs[layer.layer_id]["grad_out_shape"].append(shape)
+        
+class ResidualEnergyObserver(LayerObserver):
+    def __init__(self):
+        # logs[layer_id][metric] -> list of values
+        self.logs = defaultdict(lambda: defaultdict(list))
+    
+    def on_forward_post(self, layer, out):
+        f = layer._cache['residual']
+        s = layer._cache['shortcut']
+        self.logs[layer.layer_id]["residual"].append(np.mean(f**2).data)
+        self.logs[layer.layer_id]["shortcut"].append(np.mean(s**2).data)
+        

@@ -135,6 +135,28 @@ def sqrt(t):
     return out
 
 
+def __add__(self, other):
+    if not isinstance(other, Tensor):
+        other = Tensor(other, requires_grad=False)
+    return self.add(self, other) 
+
+def __mul__(self, other):
+    if not isinstance(other, Tensor):
+        other = Tensor(other, requires_grad=False)
+    return self.mul(self, other)
+
+def __matmul__(self, other):
+    return self.matmul(self, other)
+
+def __neg__(self):
+    return self.mul(self, Tensor(-1.0, requires_grad=False))
+
+def __pow__(self, power):
+    for _ in range(power):
+        self = self * self
+    return self
+
+
 # DRIVER CODE ----------------------------------------------------------------
 
 # m samples = 1000

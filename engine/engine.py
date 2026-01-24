@@ -1,7 +1,8 @@
 from ironframe import Tensor
 from WrappedLayer import WrappedLayer
 from ResNet import ResBlock
-from LayerObserver import SignalShapeObserver, SignalStatsObserver
+from Layer import Linear
+from LayerObserver import SignalShapeObserver, SignalStatsObserver, ResidualEnergyObserver
 import numpy as np
 
 class Engine:
@@ -40,14 +41,16 @@ for i in range(n_layers):
     else:
         out_features = in_features - 1
 
-    layers.append(ResBlock(layer_id, in_features, out_features))
+    # layers.append(ResBlock(layer_id, in_features, out_features))
+    layers.append(Linear(layer_id, in_features, out_features))
     in_features = out_features
-    layer_id += 4  # linear + relu + lnorm + optional shortcut
+    layer_id += 1  # linear + relu + lnorm + optional shortcut
 
     
 observers = [
     SignalStatsObserver(),
-    SignalShapeObserver()
+    SignalShapeObserver(),
+    ResidualEnergyObserver(),
 ]
         
 E1 = Engine(
@@ -66,7 +69,7 @@ out = E1.forward(X)
 grad_out = Tensor(np.random.randn(*out.data.shape))  # same shape as out
 grad_in = E1.backward(grad_out)
 
-for layer_no, layer_id in enumerate(range(0, n_layers*2, 3)):
+for layer_no, layer_id in enumerate(range(0, n_layers, 1)):
     print(f"Layer {layer_no} (ID: {layer_id}):")
     for observer in observers:
         observer_name = observer.__class__.__name__
