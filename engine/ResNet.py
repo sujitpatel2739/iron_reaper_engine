@@ -34,7 +34,7 @@ class ResBlock(Layer):
         f = self.relu.forward(f)
         if self.lnorm_mode == 'pre':
             # Pre-activation normalization
-            X_norm = self.lnorm.forward(X)
+            f = self.lnorm.forward(f)
         f = f * self.alpha
 
         # Shortcut path
@@ -43,34 +43,45 @@ class ResBlock(Layer):
         else:
             s = X
 
+        out = s + f
         if self.lnorm_mode == 'post':
             # Post-activation normalization
-            f = self.lnorm.forward(f)
+            out = self.lnorm.forward(out)
             
-        out = add(s, f)
         self._cache['residual'] = f
         self._cache['shortcut'] = s
         self._cache['out'] = out
         return out
 
     def backward(self, grad):
-        """
-        grad = dL/d(out)
-        """
+        # 1. Handle Post-Activation LayerNorm
+        if self.lnorm_mode == 'post':
+            grad = self.lnorm.backward(grad)
 
-        # ----- Residual path -----
+        # 2. The gradient splits at the addition (Z = S + F)
+        # Both branches receive the same incoming gradient.
+        grad_s = grad
         grad_f = grad
-        grad_f = self.lnorm.backward(grad_f)
-        grad_f = self.relu.backward(grad_f)
-        grad_f = self.linear.backward(grad_f)
+
+        # -------------------------------------------
+        # 3. Backpropagate through Residual Path (F)
+        # -------------------------------------------
+    
         grad_f = grad_f * self.alpha
 
-        # ----- Shortcut path -----
-        if self.shortcut:
-            grad_s = self.shortcut.backward(grad)
-        else:
-            grad_s = grad
+        # 3b. Handle Pre-Activation LayerNorm
+        if self.lnorm_mode == 'pre':
+            grad_f = self.lnorm.backward(grad_f)
 
-        # Combine gradients
-        grad_x = add(grad_s, grad_f)
-        return grad_x
+        grad_f = self.relu.backward(grad_f)
+        grad_f = self.linear.backward(grad_f)
+
+        # -------------------------------------------
+        # 4. Backpropagate through Shortcut Path (S)
+        # -------------------------------------------
+        if self.shortcut:
+            grad_s = self.shortcut.backward(grad_s)
+        # Else: If shortcut is None (identity connection), grad_s flows through unchanged.
+
+        # 5. Sum gradients at the split point
+        return grad_f + grad_s
