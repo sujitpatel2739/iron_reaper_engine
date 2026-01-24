@@ -28,6 +28,9 @@ class Tensor:
         for parent, parent_grad in zip(self.parents, grads_to_parents):
             parent.backward(parent_grad)
             
+    def detach(self):
+        return Tensor(self.data, requires_grad=False)
+            
     def transpose(self):
         # 1. Forward Pass: Transpose the data
         new_data = self.data.T
@@ -48,6 +51,34 @@ class Tensor:
             out.backward_fn = _backward
             
         return out
+    
+    def __add__(self, other):
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        return add(self, other) 
+    
+    def __mul__(self, other):
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        return mul(self, other)
+    
+    def __matmul__(self, other):
+        return matmul(self, other)
+    
+    def __neg__(self):
+        return mul(self, Tensor(-1.0, requires_grad=False))
+    
+    def __pow__(self, power):
+        if not isinstance(power, int) or power < 0:
+            raise ValueError("Power must be a non-negative integer for now.")
+        if power == 0:
+            return Tensor(np.ones_like(self.data), requires_grad=self.requires_grad)
+        if power == 1:
+            return self
+        result = self
+        for _ in range(power - 1):
+            result = result * self
+        return result
        
     
 def add(t1, t2):
@@ -133,28 +164,6 @@ def sqrt(t):
             return [grad / (2 * np.sqrt(t.data))]
         out.backward_fn = backward_fn
     return out
-
-
-def __add__(self, other):
-    if not isinstance(other, Tensor):
-        other = Tensor(other, requires_grad=False)
-    return self.add(self, other) 
-
-def __mul__(self, other):
-    if not isinstance(other, Tensor):
-        other = Tensor(other, requires_grad=False)
-    return self.mul(self, other)
-
-def __matmul__(self, other):
-    return self.matmul(self, other)
-
-def __neg__(self):
-    return self.mul(self, Tensor(-1.0, requires_grad=False))
-
-def __pow__(self, power):
-    for _ in range(power):
-        self = self * self
-    return self
 
 
 # DRIVER CODE ----------------------------------------------------------------

@@ -5,22 +5,22 @@ class WrappedLayer:
 
     def forward(self, x):
         for observer in self.observers:
-            observer.on_forward_pre(self.layer, x)
+            observer.on_forward_pre(self.layer, x.detach())
 
         out = self.layer.forward(x)
 
         for observer in self.observers:
-            observer.on_forward_post(self.layer, out)
+            observer.on_forward_post(self.layer, out.detach())
 
         return out
 
     def backward(self, grad):
         for observer in self.observers:
-            observer.on_backward_pre(self.layer, grad)
+            observer.on_backward_pre(self.layer, grad.detach())
 
         grad_out = self.layer.backward(grad)
 
         for observer in self.observers:
-            observer.on_backward_post(self.layer, grad_out)
+            observer.on_backward_post(self.layer, grad_out.detach())
 
         return grad_out

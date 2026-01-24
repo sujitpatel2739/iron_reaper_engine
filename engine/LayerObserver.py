@@ -56,8 +56,8 @@ class ResidualEnergyObserver(LayerObserver):
         self.logs = defaultdict(lambda: defaultdict(list))
     
     def on_forward_post(self, layer, out):
-        f = layer._cache['residual']
-        s = layer._cache['shortcut']
-        self.logs[layer.layer_id]["residual"].append(np.mean(f**2).data)
-        self.logs[layer.layer_id]["shortcut"].append(np.mean(s**2).data)
+        f = layer._cache['residual'].detach()
+        s = layer._cache['shortcut'].detach()
+        self.logs[layer.layer_id]["residual"].append(np.mean((f**2).data))
+        self.logs[layer.layer_id]["shortcut"].append(np.mean((s**2).data))
         
