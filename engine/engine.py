@@ -42,7 +42,7 @@ for i in range(n_layers):
         out_features = in_features - 1
 
     # layers.append(Linear(layer_id, in_features, out_features))
-    layers.append(ResBlock(layer_id, in_features, out_features, alpha=1, lnorm_mode='post'))
+    layers.append(ResBlock(layer_id, in_features, out_features, alpha=0.05, lnorm_mode='pre'))
     in_features = out_features
     layer_id += 4  # linear + relu + lnorm + optional shortcut
 

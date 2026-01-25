@@ -29,7 +29,6 @@ class ResBlock(Layer):
     def forward(self, X):
         self._cache['X'] = X
         
-        # Residual path
         f = self.linear.forward(X)
         f = self.relu.forward(f)
         if self.lnorm_mode == 'pre':
@@ -59,7 +58,6 @@ class ResBlock(Layer):
             grad = self.lnorm.backward(grad)
 
         # 2. The gradient splits at the addition (Z = S + F)
-        # Both branches receive the same incoming gradient.
         grad_s = grad
         grad_f = grad
 
@@ -69,7 +67,6 @@ class ResBlock(Layer):
     
         grad_f = grad_f * self.alpha
 
-        # 3b. Handle Pre-Activation LayerNorm
         if self.lnorm_mode == 'pre':
             grad_f = self.lnorm.backward(grad_f)
 
@@ -81,7 +78,6 @@ class ResBlock(Layer):
         # -------------------------------------------
         if self.shortcut:
             grad_s = self.shortcut.backward(grad_s)
-        # Else: If shortcut is None (identity connection), grad_s flows through unchanged.
 
         # 5. Sum gradients at the split point
         return grad_f + grad_s

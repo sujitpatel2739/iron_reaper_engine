@@ -14,11 +14,10 @@ class Layer:
     def backward(self, grad):
         pass
 
-    # --- lifecycle hooks (do NOT implement logic here) ---
-    def forward_pre(self, x): pass
-    def forward_post(self, out): pass
-    def backward_pre(self, grad): pass
-    def backward_post(self, grad_out): pass
+    def named_inputs(self) -> dict[str, Tensor]: pass
+    def named_outputs(self) -> dict[str, Tensor]: pass
+    def named_grads(self) -> dict[str, Tensor]: pass
+    def named_paths(self) -> dict[str, Tensor]: pass
 
 
 class Linear(Layer):
