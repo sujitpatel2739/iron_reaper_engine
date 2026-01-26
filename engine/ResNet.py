@@ -18,16 +18,12 @@ class ResBlock(Layer):
         else:
             self.shortcut = None
 
-        # Collect parameters
-        self.parameters = []
-        self.parameters += self.linear.parameters
-        if self.shortcut:
-            self.parameters += self.shortcut.parameters
-
+        # Composite layer cant have implicit parameters
+        self.parameters = {}
         self._cache = {}
 
     def _forward(self, X):
-        self._cache['X'] = X
+        self._cache['inputs']['X'] = X
         
         f = self.linear.forward(X)
         f = self.relu.forward(f)
@@ -47,12 +43,13 @@ class ResBlock(Layer):
             # Post-activation normalization
             out = self.lnorm.forward(out)
             
-        self._cache['residual'] = f
-        self._cache['shortcut'] = s
-        self._cache['out'] = out
+        self._cache['paths']['residual'] = f
+        self._cache['paths']['shortcut'] = s
+        self._cache['outputs']['out'] = out
         return out
 
     def _backward(self, grad):
+        self._cache['grads']['grad_out'] = grad
         # 1. Handle Post-Activation LayerNorm
         if self.lnorm_mode == 'post':
             grad = self.lnorm.backward(grad)
@@ -80,4 +77,6 @@ class ResBlock(Layer):
             grad_s = self.shortcut.backward(grad_s)
 
         # 5. Sum gradients at the split point
-        return grad_f + grad_s
+        grad_X = grad_f + grad_s
+        self._cache['grads']['grad_in'] = grad_X
+        return grad_X

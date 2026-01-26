@@ -2,16 +2,16 @@ from collections import defaultdict
 import numpy as np
 
 class LayerObserver:
-    def on_forward_pre(self, layer): 
+    def on_forward_pre(self, *args, **kwargs):
         pass
 
-    def on_forward_post(self, layer): 
+    def on_forward_post(self, *args, **kwargs):
         pass
 
-    def on_backward_pre(self, layer): 
+    def on_backward_pre(self, *args, **kwargs):
         pass
 
-    def on_backward_post(self, layer): 
+    def on_backward_post(self, *args, **kwargs):
         pass
 
 class SignalStatsObserver(LayerObserver):
@@ -36,28 +36,28 @@ class SignalShapeObserver(LayerObserver):
 
     def on_forward_pre(self, layer, x):
         shape = x.data.shape
-        self.logs[layer.layer_id]["input_shape"].append(shape)
-    
-    def on_forward_post(self, layer, out):
-        shape = out.data.shape
-        self.logs[layer.layer_id]["activation_shape"].append(shape)
+        self.logs[layer_id]["input_shape"].append(shape)
 
-    def on_backward_pre(self, layer, grad):
+    def on_forward_post(self, layer_id, out):
+        shape = out.data.shape
+        self.logs[layer_id]["activation_shape"].append(shape)
+
+    def on_backward_pre(self, layer_id, grad):
         shape = grad.data.shape
-        self.logs[layer.layer_id]["grad_shape"].append(shape)
+        self.logs[layer_id]["grad_shape"].append(shape)
         
-    def on_backward_post(self, layer, grad_out):
-        shape = grad_out.data.shape
-        self.logs[layer.layer_id]["grad_out_shape"].append(shape)
-        
+    def on_backward_post(self, layer_id, grad_in):
+        shape = grad_in.data.shape
+        self.logs[layer_id]["grad_in_shape"].append(shape)
+
 class ResidualEnergyObserver(LayerObserver):
     def __init__(self):
         # logs[layer_id][metric] -> list of values
         self.logs = defaultdict(lambda: defaultdict(list))
     
-    def on_forward_post(self, layer, out):
-        f = layer._cache['residual'].detach()
-        s = layer._cache['shortcut'].detach()
+    def on_forward_post(self, layer):
+        f = layer._cache['residual']
+        s = layer._cache['shortcut']
         self.logs[layer.layer_id]["residual"].append(np.mean((f**2).data))
         self.logs[layer.layer_id]["shortcut"].append(np.mean((s**2).data))
         

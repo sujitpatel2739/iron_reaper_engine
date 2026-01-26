@@ -56,6 +56,11 @@ class Tensor:
         if not isinstance(other, Tensor):
             other = Tensor(other, requires_grad=False)
         return add(self, other) 
+       
+    def __sub__(self, other):
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        return sub(self, other)
     
     def __mul__(self, other):
         if not isinstance(other, Tensor):
@@ -79,8 +84,12 @@ class Tensor:
         for _ in range(power - 1):
             result = result * self
         return result
-       
     
+    def freeze(self):
+        detached = self.detach()
+        detached.freezed = True
+        return detached
+
 def add(t1, t2):
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data + t2.data, requires_grad=requires_grad)    

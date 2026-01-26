@@ -1,13 +1,14 @@
 
 import numpy as np
 from ironframe import Tensor, add, mul, matmul, mean, sub, div, sqrt
+from types import MappingProxyType
 
 class Layer:
     def __init__(self, layer_id: int, name: str = ""):
         self.layer_id = layer_id
         self.name = name
         self.type = str(self.__class__.__name__).lower()
-        self.parameters = []
+        self.parameters = {}
         self._cache = {
             'inputs': {},
             'outputs': {},
@@ -15,10 +16,10 @@ class Layer:
             'paths': {},
             'running': {}
         }
-        self.detached = False
+        self._detached = False
         
     def __call__(self, x):
-        if self.detached:
+        if self._detached:
             return x
         return self._forward(x)
     
@@ -26,16 +27,27 @@ class Layer:
         pass
 
     def backward(self, grad):
-        if self.detached:
+        if self._detached:
             return grad
         return self._backward(grad)         
 
     def _backward(self, grad):
         pass
     
+    def __setattr__(self, name, value):
+        if getattr(self, '_detached', True):
+            raise AttributeError(f"Layer is detached (immutable). Cannot modify '{name}'.")
+        self.__setattr__(self, name, value)
+    
     def detach(self):
-        pass
-        
+        self._detached = True
+        if hasattr(self, 'parameters'):
+            read_only_parameters = MappingProxyType(self.parameters)
+            object.__setattr__(self, 'parameters', read_only_parameters)
+            
+        if hasattr(self, '_cache'):
+            read_only_cache = MappingProxyType(self._cache)
+            object.__setattr__(self, '_cache', read_only_cache)
 
 
 class Linear(Layer):
@@ -44,7 +56,7 @@ class Linear(Layer):
         std = np.sqrt(2.0 / in_features)
         self.W = Tensor(np.random.normal(0, std**2, (in_features, out_features)), requires_grad=True)
         self.b = Tensor(np.zeros((1, out_features)), requires_grad=True)
-        self.parameters = [self.W, self.b]
+        self.parameters = {'W': self.W, 'b': self.b}
         
     def _forward(self, X):
         self._cache['inputs'] = {'input': X}
@@ -83,14 +95,15 @@ class LayerNorm(Layer):
         self.gamma = Tensor(np.ones((1, in_features)), requires_grad=True)
         self.beta  = Tensor(np.zeros((1, in_features)), requires_grad=True)
 
-        self.parameters = [self.gamma, self.beta]
+        self.parameters = {'gamma': self.gamma, 'beta': self.beta}
         self._cache = {}
     
     def _forward(self, X):
         # mean over features (per sample)
+        self._cache['inputs']['input'] = X
         mu = mean(X, axis=-1, keepdims=True)
 
-        # varianceo
+        # variance
         X_mu = X - mu
         var = mean(X_mu * X_mu, axis=-1, keepdims=True)
 
@@ -103,12 +116,10 @@ class LayerNorm(Layer):
         out = (self.gamma * X_hat) + self.beta
 
         # cache everything needed for backward
-        self._cache['inputs']['input'] = X
-            
         self._cache['inputs']['running'] = {'X_hat': X_hat,
                                             'std': std,
                                             'X_mu': X_mu}
-        self.cache['outputs']['out'] = out
+        self._cache['outputs']['out'] = out
         return out
     
     def _backward(self, grad):
