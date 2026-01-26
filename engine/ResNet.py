@@ -26,7 +26,7 @@ class ResBlock(Layer):
 
         self._cache = {}
 
-    def forward(self, X):
+    def _forward(self, X):
         self._cache['X'] = X
         
         f = self.linear.forward(X)
@@ -52,7 +52,7 @@ class ResBlock(Layer):
         self._cache['out'] = out
         return out
 
-    def backward(self, grad):
+    def _backward(self, grad):
         # 1. Handle Post-Activation LayerNorm
         if self.lnorm_mode == 'post':
             grad = self.lnorm.backward(grad)

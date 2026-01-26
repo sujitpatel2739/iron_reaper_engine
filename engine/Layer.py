@@ -3,66 +3,80 @@ import numpy as np
 from ironframe import Tensor, add, mul, matmul, mean, sub, div, sqrt
 
 class Layer:
-    def __init__(self, layer_id: int):
+    def __init__(self, layer_id: int, name: str = ""):
         self.layer_id = layer_id
+        self.name = name
+        self.type = str(self.__class__.__name__).lower()
         self.parameters = []
-        self._cache = {}
-
-    def forward(self, x):
+        self._cache = {
+            'inputs': {},
+            'outputs': {},
+            'grads': {},
+            'paths': {},
+            'running': {}
+        }
+        self.detached = False
+        
+    def __call__(self, x):
+        if self.detached:
+            return x
+        return self._forward(x)
+    
+    def _forward(self, x):
         pass
 
     def backward(self, grad):
-        pass
+        if self.detached:
+            return grad
+        return self._backward(grad)         
 
-    def named_inputs(self) -> dict[str, Tensor]: pass
-    def named_outputs(self) -> dict[str, Tensor]: pass
-    def named_grads(self) -> dict[str, Tensor]: pass
-    def named_paths(self) -> dict[str, Tensor]: pass
+    def _backward(self, grad):
+        pass
+    
+    def detach(self):
+        pass
+        
 
 
 class Linear(Layer):
-    def __init__(self, layer_id, in_features, out_features):
-        super().__init__(layer_id)
+    def __init__(self, layer_id, in_features, out_features, name=""):
+        super().__init__(layer_id, name)
         std = np.sqrt(2.0 / in_features)
         self.W = Tensor(np.random.normal(0, std**2, (in_features, out_features)), requires_grad=True)
         self.b = Tensor(np.zeros((1, out_features)), requires_grad=True)
         self.parameters = [self.W, self.b]
-    
-    def __call__(self, x):
-        return self.forward(x)
-    
-    def forward(self, X):
-        self._cache['X'] = X
+        
+    def _forward(self, X):
+        self._cache['inputs'] = {'input': X}
         out = add(matmul(X, self.W), self.b)
-        self._cache['out'] = out
+        self._cache['outputs'] = {'out': out}
         # out.shape: (batch, out_features)
         return out
     
-    def backward(self, grad):
+    def _backward(self, grad):
         # grad.shape: (batch, out_features)
+        self._cache['grads']['grad_out'] = grad
         grad_X = matmul(grad, self.W.transpose())
-        return grad_X
+        self._cache['grads']['grad_in'] = grad_X
         # grad_input.shape: (batch, in_features)
+        return grad_X
         
 class Relu(Layer):
-    def __init__(self, layer_id):
-        super().__init__(layer_id)
+    def __init__(self, layer_id, name=""):
+        super().__init__(layer_id, name)
         self.mask = None
     
-    def __call__(self, input):
-        return self.forward(input)
-    
-    def forward(self, input):
+    def _forward(self, input):
         out = Tensor(np.maximum(0, input.data), requires_grad=input.requires_grad)
         self.mask = input.data > 0
         return out
     
-    def backward(self, grad):
+    def _backward(self, grad):
         return Tensor(grad.data * self.mask, requires_grad=grad.requires_grad)
     
 class LayerNorm(Layer):
-    def __init__(self, layer_id, in_features, eps):
-        super().__init__(layer_id)
+    def __init__(self, layer_id, in_features, eps, name=""):
+        super().__init__(layer_id, name)
 
         self.eps = eps
 
@@ -71,35 +85,33 @@ class LayerNorm(Layer):
 
         self.parameters = [self.gamma, self.beta]
         self._cache = {}
-        
-    def __call__(self, X):
-        return self.forward(X)
     
-    def forward(self, X):
+    def _forward(self, X):
         # mean over features (per sample)
         mu = mean(X, axis=-1, keepdims=True)
 
         # varianceo
-        X_mu = sub(X, mu)
-        var = mean(mul(X_mu, X_mu), axis=-1, keepdims=True)
+        X_mu = X - mu
+        var = mean(X_mu * X_mu, axis=-1, keepdims=True)
 
         # normalize
         eps = Tensor(np.ones_like(var.data) * self.eps, requires_grad=False)
-        std = sqrt(add(var, eps))
-        X_hat = div(X_mu, std)
+        std = sqrt(var * eps)
+        X_hat = X_mu / std
 
         # affine
-        out = add(mul(self.gamma, X_hat), self.beta)
+        out = (self.gamma * X_hat) + self.beta
 
         # cache everything needed for backward
-        self._cache = {
-            'X_hat': X_hat,
-            'std': std,
-            'X_mu': X_mu
-        }
+        self._cache['inputs']['input'] = X
+            
+        self._cache['inputs']['running'] = {'X_hat': X_hat,
+                                            'std': std,
+                                            'X_mu': X_mu}
+        self.cache['outputs']['out'] = out
         return out
     
-    def backward(self, grad):
+    def _backward(self, grad):
         """
         grad.shape = (batch_size, in_features)
         Using the cached values from forward pass to compute gradients.
@@ -108,16 +120,17 @@ class LayerNorm(Layer):
         - std
         - X_mu
         """
-        X_hat = self._cache['X_hat']
-        std   = self._cache['std']
-        X_mu  = self._cache['X_mu']
+        self._cache['grads']['grad_out'] = grad
+        X_hat = self._cache['running']['X_hat']
+        std   = self._cache['running']['std']
+        X_mu  = self._cache['running']['X_mu']
         N = X_hat.data.shape[-1]
 
         # gradients for gamma and beta
         if self.gamma.grad:
-            self.gamma.grad += mean(mul(grad, X_hat), axis=0)
+            self.gamma.grad += mean(grad * X_hat, axis=0)
         else:
-            self.gamma.grad = mean(mul(grad, X_hat), axis=0)
+            self.gamma.grad = mean(grad * X_hat, axis=0)
         if self.beta.grad:
             self.beta.grad += mean(grad, axis=0)
         else:
@@ -125,13 +138,13 @@ class LayerNorm(Layer):
             
 
         # grad wrt normalized input
-        dX_hat = mul(grad, self.gamma)
+        dX_hat = grad * self.gamma
 
         # LayerNorm backward (derived, exact)
         term1 = dX_hat
         term2 = mean(dX_hat, axis=-1, keepdims=True)
-        term3 = mul(X_hat, mean(mul(dX_hat, X_hat), axis=-1, keepdims=True))
+        term3 = X_hat * mean(dX_hat * X_hat, axis=-1, keepdims=True)
 
-        grad_X = div(sub(sub(term1, term2), term3), std)
-
+        grad_X = ((term1 - term2) - term3) / std
+        self._cache['grads']['grad_in'] = grad_X
         return grad_X
