@@ -7,9 +7,10 @@ class Tensor:
         self.parents = []
         self.requires_grad = requires_grad
         self.backward_fn = None
+        self.freezed = False
     
     def backward(self, grad=None):
-        if not self.requires_grad:
+        if not self.requires_grad and not self.freezed:
             return
 
         if grad is None:

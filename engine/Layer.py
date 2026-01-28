@@ -5,7 +5,7 @@ from types import MappingProxyType
 
 class Layer:
     def __init__(self, layer_id: int, name: str = ""):
-        self.layer_id = layer_id
+        self.id = layer_id
         self.name = name
         self.type = str(self.__class__.__name__).lower()
         self.parameters = {}
