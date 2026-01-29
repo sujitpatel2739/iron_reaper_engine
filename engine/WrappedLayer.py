@@ -12,22 +12,21 @@ class WrappedLayer:
 
         out = self.layer(x)
 
-        out_view = copy_as_view(out).freeze()
+        cache = copy_as_view(self.layer).detach()._cache
         for observer in self.observers:
-            observer.on_forward_post(self.layer.id, self.layer._cache)
+            observer.on_forward_post(self.layer.id, cache)
         return out
 
     def backward(self, grad):
-        grad_view = copy_as_view(grad).freeze()
+        cache = copy_as_view(self.layer).detach()._cache
         for observer in self.observers:
-            observer.on_backward_pre(self.layer.id, self.layer._cache)
+            observer.on_backward_pre(self.layer.id, cache)
 
         grad_in = self.layer.backward(grad)
 
-        grad_in_view = copy_as_view(grad_in).freeze()
+        cache = copy_as_view(self.layer).detach()._cache
         for observer in self.observers:
-            observer.on_backward_post(self.layer.id, self.layer._cache)
+            observer.on_backward_post(self.layer.id, cache)
 
         return grad_in
-    
     

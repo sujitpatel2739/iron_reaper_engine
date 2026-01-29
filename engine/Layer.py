@@ -9,16 +9,11 @@ class Layer:
         self.name = name
         self.type = str(self.__class__.__name__).lower()
         self.parameters = {}
-        self._cache = {
-            'inputs': {},
-            'outputs': {},
-            'grads': {},
-            'paths': {},
-            'running': {}
-        }
+        self._cache = ({}, {}, {}, {}, {})
         self._detached = False
         
     def __call__(self, x):
+        print("Layer detached!")
         if self._detached:
             return x
         return self._forward(x)
@@ -40,7 +35,6 @@ class Layer:
         self.__setattr__(self, name, value)
     
     def detach(self):
-        self._detached = True
         if hasattr(self, 'parameters'):
             read_only_parameters = MappingProxyType(self.parameters)
             object.__setattr__(self, 'parameters', read_only_parameters)
@@ -48,6 +42,7 @@ class Layer:
         if hasattr(self, '_cache'):
             read_only_cache = MappingProxyType(self._cache)
             object.__setattr__(self, '_cache', read_only_cache)
+        self._detached = True
 
 
 class Linear(Layer):

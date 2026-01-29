@@ -80,3 +80,6 @@ class ResBlock(Layer):
         grad_X = grad_f + grad_s
         self._cache['grads']['grad_in'] = grad_X
         return grad_X
+    
+    def get_cache(self, key):
+        return self._cache.get(key, None)

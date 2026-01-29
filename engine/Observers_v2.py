@@ -2,6 +2,8 @@ from collections import defaultdict
 import numpy as np
 
 class LayerObserver:
+    def __init__(self): pass
+        
     def on_forward_pre(self, *args, **kwargs):
         pass
 
@@ -17,7 +19,7 @@ class LayerObserver:
 class SignalStatsObserver(LayerObserver):
     def __init__(self):
         # logs[layer_id][metric] -> list of values
-        self.logs = defaultdict(lambda: defaultdict(list))
+        self.logs = defaultdict(lambda: defaultdict(list))      
 
     def on_forward_post(self, layer_id, layer_cache):
         data = layer_cache['outputs']['out'].data
@@ -34,7 +36,7 @@ class SignalShapeObserver(LayerObserver):
         # logs[layer_id][metric] -> list of values
         self.logs = defaultdict(lambda: defaultdict(list))
 
-    def on_forward_pre(self, layer_id, x, layer_cache):
+    def on_forward_pre(self, layer_id, x):
         shape = x.data.shape
         self.logs[layer_id]["input_shape"].append(shape)
 
@@ -57,7 +59,7 @@ class ResidualEnergyObserver(LayerObserver):
         self.logs = defaultdict(lambda: defaultdict(list))
 
     def on_forward_post(self, layer_id, layer_cache):
-        f = layer_cache['residual']
-        s = layer_cache['shortcut']
+        f = layer_cache['paths']['residual']
+        s = layer_cache['paths']['shortcut']
         self.logs[layer_id]["residual"].append(np.mean((f**2).data))
         self.logs[layer_id]["shortcut"].append(np.mean((s**2).data))
