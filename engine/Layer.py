@@ -9,6 +9,7 @@ class Layer:
         self.name = name
         self.type = str(self.__class__.__name__).lower()
         self.parameters = {}
+        # _cache structure: inputs, outputs, grads, paths, running
         self._cache = ({}, {}, {}, {}, {})
         self._detached = False
         
@@ -62,9 +63,9 @@ class Linear(Layer):
     
     def _backward(self, grad):
         # grad.shape: (batch, out_features)
-        self._cache['grads']['grad_out'] = grad
+        self._cache[2]['grad_out'] = grad
         grad_X = matmul(grad, self.W.transpose())
-        self._cache['grads']['grad_in'] = grad_X
+        self._cache[2]['grad_in'] = grad_X
         # grad_input.shape: (batch, in_features)
         return grad_X
         
@@ -95,7 +96,7 @@ class LayerNorm(Layer):
     
     def _forward(self, X):
         # mean over features (per sample)
-        self._cache['inputs']['input'] = X
+        self._cache[0]['input'] = X
         mu = mean(X, axis=-1, keepdims=True)
 
         # variance
@@ -111,10 +112,12 @@ class LayerNorm(Layer):
         out = (self.gamma * X_hat) + self.beta
 
         # cache everything needed for backward
-        self._cache['inputs']['running'] = {'X_hat': X_hat,
-                                            'std': std,
-                                            'X_mu': X_mu}
-        self._cache['outputs']['out'] = out
+        self._cache[4].update({
+            'X_hat': X_hat,
+            'std': std,
+            'X_mu': X_mu})
+        
+        self._cache[1]['out'] = out
         return out
     
     def _backward(self, grad):
@@ -126,10 +129,10 @@ class LayerNorm(Layer):
         - std
         - X_mu
         """
-        self._cache['grads']['grad_out'] = grad
-        X_hat = self._cache['running']['X_hat']
-        std   = self._cache['running']['std']
-        X_mu  = self._cache['running']['X_mu']
+        self._cache[2]['grad_out'] = grad
+        X_hat = self._cache[4]['X_hat']
+        std   = self._cache[4]['std']
+        X_mu  = self._cache[4]['X_mu']
         N = X_hat.data.shape[-1]
 
         # gradients for gamma and beta
@@ -152,5 +155,5 @@ class LayerNorm(Layer):
         term3 = X_hat * mean(dX_hat * X_hat, axis=-1, keepdims=True)
 
         grad_X = ((term1 - term2) - term3) / std
-        self._cache['grads']['grad_in'] = grad_X
+        self._cache[2]['grad_in'] = grad_X
         return grad_X

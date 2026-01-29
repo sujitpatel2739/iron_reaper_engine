@@ -6,7 +6,7 @@ class WrappedLayer:
         self.observers = observers
 
     def forward(self, x):
-        x_view = copy_as_view(x).freeze()
+        x_view = copy_as_view(x)
         for observer in self.observers:
             observer.on_forward_pre(self.layer.id, x_view, self.layer._cache)
 

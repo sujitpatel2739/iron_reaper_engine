@@ -22,12 +22,12 @@ class SignalStatsObserver(LayerObserver):
         self.logs = defaultdict(lambda: defaultdict(list))      
 
     def on_forward_post(self, layer_id, layer_cache):
-        data = layer_cache['outputs']['out'].data
+        data = layer_cache[1]['out'].freeze().data
         self.logs[layer_id]["activation_mean"].append(data.mean())
         self.logs[layer_id]["activation_var"].append(data.var())
 
     def on_backward_pre(self, layer_id, layer_cache):
-        grad = layer_cache['grads']['grad_in'].data
+        grad = layer_cache[2]['grad_in'].freeze().data
         self.logs[layer_id]["grad_norm"].append(np.linalg.norm(grad))
         self.logs[layer_id]["grad_var"].append(grad.var())
 
@@ -37,19 +37,19 @@ class SignalShapeObserver(LayerObserver):
         self.logs = defaultdict(lambda: defaultdict(list))
 
     def on_forward_pre(self, layer_id, x):
-        shape = x.data.shape
+        shape = x.freeze().data.shape
         self.logs[layer_id]["input_shape"].append(shape)
 
     def on_forward_post(self, layer_id, layer_cache):
-        shape = layer_cache['outputs']['out'].data.shape
+        shape = layer_cache[1]['out'].freeze().data.shape
         self.logs[layer_id]["activation_shape"].append(shape)
 
     def on_backward_pre(self, layer_id, layer_cache):
-        grad = layer_cache['grads']['grad_in'].data
+        grad = layer_cache[2]['grad_in'].freeze().data
         self.logs[layer_id]["grad_shape"].append(grad.shape)
 
     def on_backward_post(self, layer_id, layer_cache):
-        grad_in = layer_cache['grads']['grad_in']
+        grad_in = layer_cache[2]['grad_in'].freeze()
         shape = grad_in.data.shape
         self.logs[layer_id]["grad_in_shape"].append(shape)
 
@@ -59,7 +59,7 @@ class ResidualEnergyObserver(LayerObserver):
         self.logs = defaultdict(lambda: defaultdict(list))
 
     def on_forward_post(self, layer_id, layer_cache):
-        f = layer_cache['paths']['residual']
-        s = layer_cache['paths']['shortcut']
+        f = layer_cache[3]['residual'].freeze()
+        s = layer_cache[3]['shortcut'].freeze()
         self.logs[layer_id]["residual"].append(np.mean((f**2).data))
         self.logs[layer_id]["shortcut"].append(np.mean((s**2).data))

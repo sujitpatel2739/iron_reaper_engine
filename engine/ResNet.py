@@ -23,7 +23,7 @@ class ResBlock(Layer):
         self._cache = {}
 
     def _forward(self, X):
-        self._cache['inputs']['X'] = X
+        self._cache[0]['X'] = X
         
         f = self.linear.forward(X)
         f = self.relu.forward(f)
@@ -43,13 +43,13 @@ class ResBlock(Layer):
             # Post-activation normalization
             out = self.lnorm.forward(out)
             
-        self._cache['paths']['residual'] = f
-        self._cache['paths']['shortcut'] = s
-        self._cache['outputs']['out'] = out
+        self._cache[3]['residual'] = f
+        self._cache[3]['shortcut'] = s
+        self._cache[1]['out'] = out
         return out
 
     def _backward(self, grad):
-        self._cache['grads']['grad_out'] = grad
+        self._cache[2]['grad_out'] = grad
         # 1. Handle Post-Activation LayerNorm
         if self.lnorm_mode == 'post':
             grad = self.lnorm.backward(grad)
@@ -78,8 +78,5 @@ class ResBlock(Layer):
 
         # 5. Sum gradients at the split point
         grad_X = grad_f + grad_s
-        self._cache['grads']['grad_in'] = grad_X
+        self._cache[2]['grad_in'] = grad_X
         return grad_X
-    
-    def get_cache(self, key):
-        return self._cache.get(key, None)
