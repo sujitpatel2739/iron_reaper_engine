@@ -2,9 +2,12 @@ from engine import Engine
 from ResNet import ResBlock
 from diag.engine import MIEngine
 from Layer import Linear
-from LayerObserver import SignalShapeObserver, SignalStatsObserver, ResidualEnergyObserver
+from Observers import SignalShapeObserver, SignalStatsObserver, ResidualEnergyObserver
+from diag.Profiles.Profiles import SignalStateProfile
 import numpy as np
 from ironframe import Tensor
+import matplotlib.pyplot as plt
+from collections import defaultdict
 
 # Drive code ----------------------------------------------------------
 n_layers = 20
@@ -39,7 +42,7 @@ E1 = Engine(
 batch_size = 100
 in_features = 10
 X = Tensor(
-    np.random.randn(batch_size, in_features),  # batch_size=32, in_features=10
+    np.random.randn(batch_size, in_features),
     requires_grad=True
 )
 
@@ -50,33 +53,61 @@ grad_in = E1.backward(grad_out)
 for layer_no, layer_id in enumerate(range(0, n_layers, 4)):
     print(f"Layer {layer_no} (ID: {layer_id}):")
     for observer in observers:
-        observer_name = observer.__class__.__name__
-        print(f" Observer: {observer_name}")
-        for metric, values in observer.logs[layer_id].items():
-            if(observer_name == "SignalStatsObserver"):
-                print(f"    {metric}: {np.mean(values)}")
-            else:
-                print(f"    {metric}: {values}")
+        obs_name = type(observer).__name__
+        if layer_id in observer.logs:
+            print(f"  Observer: {obs_name}")
+            for metric, values in observer.logs[layer_id].items():
+                if obs_name == "SignalShapeObserver":
+                    print(f"    {metric}: {values[-1]}")  # print last recorded shape
+                else:
+                    print(f"    {metric}: {np.mean(values)}")
                 
                 
 # ------------------------------------------------------------------------------------
 # Derieved metrics interpertation (DME):
 
-# We need to creat different interpreter profiles, each interpreteing one or more specific metric(s).
-class InterpreterProfile:
-    def __init__(self, name):
-        self.name = name
-        
-    def __call__(self, observers):
-        return self._execute(observers)
+
+def analyze_pattern(data):
+    x = np.arange(len(data))
+    y = np.array(data)
+
+    threshold = 0.001
+    slope, intercept = np.polyfit(x, y, 1)
+
+    if slope > threshold:
+        return "increasing"
+    elif slope < -threshold:
+        return "decreasing"
+    else:
+        return "stable"
     
-    def _execute(self, observers):
-        # Example interpretation logic for this profile
-        print(f"Executing interpreter profile: {self.name}")
-        for observer in observers:
-            observer_name = observer.__class__.__name__
-            print(f"  Observer: {observer_name}")
 
-forwardVarianceProfile = InterpreterProfile("Forward_Variance")
+# We need to create different interpreter profiles, each interpreteing one or more specific metric(s).
 
-mi_engine = MIEngine("Interpreter-1")
+signal_state_profile = SignalStateProfile("signal_state")
+signal_state_profile.forwardVariance(observers[0])  # SignalStatsObserver
+signal_state_profile.backwardGradientNorm(observers[0])  # SignalStatsObserver
+
+# ------------------------------------------------------------------------------------
+# Noww we plot the derived metrics for visualization:
+# Plot Forward Activation Variance per Layer
+pattern = analyze_pattern([v for _, v in signal_state_profile.layers_variance])
+layers, variances = zip(*signal_state_profile.layers_variance)
+plt.figure(figsize=(10, 5))
+plt.plot(layers, variances, marker='o')
+plt.xlabel("Layer ID")
+plt.ylabel(f"Forward Activation Variance ({pattern})")
+plt.title("Forward Activation Variance per Layer")
+plt.grid(True)
+plt.show()
+
+# Plot Backward Gradient Norm per Layer
+pattern = analyze_pattern([v for _, v in signal_state_profile.layers_grad_norm])
+layers, grad_norms = zip(*signal_state_profile.layers_grad_norm)
+plt.figure(figsize=(10, 5))
+plt.plot(layers, grad_norms, marker='o')
+plt.xlabel("Layer ID")
+plt.ylabel(f"Backward Gradient Norm ({pattern})")
+plt.title("Backward Gradient Norm per Layer")
+plt.grid(True)
+plt.show()

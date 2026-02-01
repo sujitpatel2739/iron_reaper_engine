@@ -18,23 +18,22 @@ class ResBlock(Layer):
         else:
             self.shortcut = None
 
-        # Composite layer cant have implicit parameters
-        self.parameters = {}
-        self._cache = {}
+        # Composite layer cannot have implicit parameters
+        # self.parameters = {}
 
     def _forward(self, X):
-        self._cache[0]['X'] = X
+        self._cache[0]['in'] = X
         
-        f = self.linear.forward(X)
-        f = self.relu.forward(f)
+        f = self.linear(X)
+        f = self.relu(f)
         if self.lnorm_mode == 'pre':
             # Pre-activation normalization
-            f = self.lnorm.forward(f)
+            f = self.lnorm(f)
         f = f * self.alpha
 
         # Shortcut path
         if self.shortcut:
-            s = self.shortcut.forward(X)
+            s = self.shortcut(X)
         else:
             s = X
 

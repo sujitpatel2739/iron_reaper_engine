@@ -5,17 +5,17 @@ from types import MappingProxyType
 
 class Layer:
     def __init__(self, layer_id: int, name: str = ""):
+        object.__setattr__(self, '_detached', False)
         self.id = layer_id
-        self.name = name
+        self.name = "layer_" + str(layer_id) if name == "" else name
         self.type = str(self.__class__.__name__).lower()
         self.parameters = {}
         # _cache structure: inputs, outputs, grads, paths, running
-        self._cache = ({}, {}, {}, {}, {})
-        self._detached = False
+        self._cache = tuple([{}, {}, {}, {}, {}])
         
     def __call__(self, x):
-        print("Layer detached!")
         if self._detached:
+            print("Layer detached! Passing input unchanged!")
             return x
         return self._forward(x)
     
@@ -33,17 +33,16 @@ class Layer:
     def __setattr__(self, name, value):
         if getattr(self, '_detached', True):
             raise AttributeError(f"Layer is detached (immutable). Cannot modify '{name}'.")
-        self.__setattr__(self, name, value)
+        super().__setattr__(name, value)
     
     def detach(self):
         if hasattr(self, 'parameters'):
             read_only_parameters = MappingProxyType(self.parameters)
             object.__setattr__(self, 'parameters', read_only_parameters)
-            
-        if hasattr(self, '_cache'):
-            read_only_cache = MappingProxyType(self._cache)
-            object.__setattr__(self, '_cache', read_only_cache)
+
         self._detached = True
+        print("Layer detached: ", self)
+        return self
 
 
 class Linear(Layer):
@@ -55,9 +54,9 @@ class Linear(Layer):
         self.parameters = {'W': self.W, 'b': self.b}
         
     def _forward(self, X):
-        self._cache['inputs'] = {'input': X}
+        self._cache[0]['in'] = X
         out = add(matmul(X, self.W), self.b)
-        self._cache['outputs'] = {'out': out}
+        self._cache[1]['out'] = out
         # out.shape: (batch, out_features)
         return out
     
@@ -92,11 +91,10 @@ class LayerNorm(Layer):
         self.beta  = Tensor(np.zeros((1, in_features)), requires_grad=True)
 
         self.parameters = {'gamma': self.gamma, 'beta': self.beta}
-        self._cache = {}
     
     def _forward(self, X):
         # mean over features (per sample)
-        self._cache[0]['input'] = X
+        self._cache[0]['in'] = X
         mu = mean(X, axis=-1, keepdims=True)
 
         # variance

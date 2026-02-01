@@ -1,9 +1,4 @@
-from ironframe import Tensor
 from WrappedLayer import WrappedLayer
-from ResNet import ResBlock
-from Layer import Linear
-from LayerObserver import SignalShapeObserver, SignalStatsObserver, ResidualEnergyObserver
-import numpy as np
 
 class Engine:
     def __init__(self, layers, observers):

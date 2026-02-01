@@ -68,6 +68,11 @@ class Tensor:
             other = Tensor(other, requires_grad=False)
         return mul(self, other)
     
+    def __truediv__(self, other):
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        return div(self, other)
+    
     def __matmul__(self, other):
         return matmul(self, other)
     
@@ -89,6 +94,7 @@ class Tensor:
     def freeze(self):
         detached = self.detach()
         detached.freezed = True
+        # print("Freezed tensor: ", detached)
         return detached
 
 def add(t1, t2):
