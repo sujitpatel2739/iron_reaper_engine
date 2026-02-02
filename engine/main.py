@@ -58,7 +58,7 @@ for layer_no, layer_id in enumerate(range(0, n_layers, 4)):
             print(f"  Observer: {obs_name}")
             for metric, values in observer.logs[layer_id].items():
                 if obs_name == "SignalShapeObserver":
-                    print(f"    {metric}: {values[-1]}")  # print last recorded shape
+                    print(f"    {metric}: {values[-1]}")
                 else:
                     print(f"    {metric}: {np.mean(values)}")
                 

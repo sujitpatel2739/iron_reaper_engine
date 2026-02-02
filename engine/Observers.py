@@ -25,7 +25,7 @@ class SignalStatsObserver(LayerObserver):
         self.logs = defaultdict(lambda: defaultdict(list))      
 
     def on_forward_post(self, layer_id, layer_cache):
-        out = layer_cache[1]['out'].freeze().data
+        out = layer_cache[1]['out'].freeze()
         if not out.freezed:
             print("[WARNING]: layer output is not freezed in SignalStatsObserver")
             return
