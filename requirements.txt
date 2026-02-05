@@ -1,0 +1,7 @@
+numpy>=1.21.0
+matplotlib>=3.4.0
+
+# Optional / developer tools (uncomment to use)
+# pytest
+# black
+# flake8
