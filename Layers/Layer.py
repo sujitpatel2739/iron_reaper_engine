@@ -41,7 +41,6 @@ class Layer:
             object.__setattr__(self, 'parameters', read_only_parameters)
 
         self._detached = True
-        print("Layer detached: ", self)
         return self
 
 
@@ -49,7 +48,7 @@ class Linear(Layer):
     def __init__(self, layer_id, in_features, out_features, name=""):
         super().__init__(layer_id, name)
         std = np.sqrt(2.0 / in_features)
-        self.W = Tensor(np.random.normal(0, std**2, (in_features, out_features)), requires_grad=True)
+        self.W = Tensor(np.random.normal(0, std, (in_features, out_features)), requires_grad=True)
         self.b = Tensor(np.zeros((1, out_features)), requires_grad=True)
         self.parameters = {'W': self.W, 'b': self.b}
         
@@ -103,7 +102,7 @@ class LayerNorm(Layer):
 
         # normalize
         eps = Tensor(np.ones_like(var.data) * self.eps, requires_grad=False)
-        std = sqrt(var * eps)
+        std = sqrt(var + eps)
         X_hat = X_mu / std
 
         # affine
