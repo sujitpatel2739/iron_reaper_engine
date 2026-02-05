@@ -34,10 +34,10 @@ class SignalStatsObserver(LayerObserver):
 
     def on_backward_pre(self, layer_id, grad_out):
         grad_out = grad_out.freeze()
-        data = grad_out.data
         if not grad_out.freezed:
             print("[WARNING]: grad_out is not freezed in SignalStatsObserver")
             return
+        data = grad_out.data
         self.logs[layer_id]["grad_norm"].append(np.linalg.norm(data))
         self.logs[layer_id]["grad_var"].append(data.var())
 

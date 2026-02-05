@@ -1,42 +1,47 @@
 import numpy as np
 
+from diag.MetricStore import MetricStore
+
 class InterpreterProfile:
-    def __init__(self, name):
+    def __init__(self, name, run):
         self.name = name
-        self.observer_name = None
+        self.run = run
         
-    def __call__(self, observers):
-        return self._execute(observers)
-    
-    def _execute(self, observers):
-        # Example interpretation logic for this profile
-        print(f"Executing interpreter profile: {self.name}")
-        for observer in observers:
-            observer_name = observer.__class__.__name__
-            print(f"  Observer: {observer_name}")
+    def __call__(self, store):
+        raise NotImplementedError("InterpreterProfile __call__ method must be implemented in subclasses.")
 
 
-class SignalStateProfile(InterpreterProfile):
-    def __init__(self, name):
-        super().__init__(name)
-        self.observer_name = "SignalStatsObserver"
-        self.layers_variance = []
-        self.layers_grad_norm = []
+class SignalStatsProfile(InterpreterProfile):
+    name = "signal_state"
+
+    def __call__(self, store):
+        activation_mean = store.get_layer_sequence(self.run, "activation_mean")
+        activation_var = store.get_layer_sequence(self.run, "activation_var")
+        grad_norm = store.get_layer_sequence(self.run, "grad_norm")
+        grad_var = store.get_layer_sequence(self.run, "grad_var")
         
-    def forwardVariance(self, observer):
-        print(f"Interpreting forward variance metrics:")
-        if hasattr(observer, 'logs'):
-            for layer_id, metrics in observer.logs.items():
-                if 'activation_var' in metrics:
-                    mean_variance = np.mean(metrics['activation_var'])
-                    self.layers_variance.append((layer_id, mean_variance))
-                    print(f"  Layer ID {layer_id}: Mean Variance = {mean_variance}")
+        return {
+            'activation_mean': activation_mean,
+            'activation_var': activation_var,
+            'grad_norm': grad_norm,
+            'grad_var': grad_var
+        }
+
                     
-    def backwardGradientNorm(self, observer):
-        print(f"Interpreting backward gradient norm metrics:")
-        if hasattr(observer, 'logs'):
-            for layer_id, metrics in observer.logs.items():
-                if 'grad_norm' in metrics:
-                    mean_grad_norm = np.mean(metrics['grad_norm'])
-                    self.layers_grad_norm.append((layer_id, mean_grad_norm))
-                    print(f"  Layer ID {layer_id}: Mean Gradient Norm = {mean_grad_norm}")
+class PathDominanceProfile(InterpreterProfile):
+    name = "path_dominance"
+
+    def __call__(self, store):
+        residual = store.get_layer_sequence(self.run, "residual_energy")
+        shortcut = store.get_layer_sequence(self.run, "shortcut_energy")
+
+        residual = {}
+        shortcut = {}
+        for (l, r), (_, s) in zip(residual.items(), shortcut.items()):
+            residual[l]= r / (r + s)
+            shortcut[l]= s / (r + s)
+            
+        return {
+            'residual': residual,
+            'shortcut': shortcut
+        }
