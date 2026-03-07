@@ -88,10 +88,10 @@ class ResidualEnergyObserver(LayerObserver):
         if not f.freezed:
             print("[WARNING]: residual is not freezed in ResidualEnergyObserver")
             return
-        self.logs[layer_id]["residual"].append(np.mean((f**2).data))
+        self.logs[layer_id]["residual_energy"].append(np.mean((f**2).data))
         
         s = layer_cache[3]['shortcut'].freeze()
         if not s.freezed:
             print("[WARNING]: shortcut is not freezed in ResidualEnergyObserver")
             return
-        self.logs[layer_id]["shortcut"].append(np.mean((s**2).data))
+        self.logs[layer_id]["shortcut_energy"].append(np.mean((s**2).data))
