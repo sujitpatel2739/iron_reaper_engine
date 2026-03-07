@@ -32,15 +32,16 @@ class PathDominanceProfile(InterpreterProfile):
     name = "path_dominance"
 
     def __call__(self, store):
-        residual = store.get_layer_sequence(self.run, "residual_energy")
-        shortcut = store.get_layer_sequence(self.run, "shortcut_energy")
+        raw_residual = store.get_layer_sequence(self.run, "residual_energy")
+        raw_shortcut = store.get_layer_sequence(self.run, "shortcut_energy")
 
         residual = {}
         shortcut = {}
-        for (l, r), (_, s) in zip(residual.items(), shortcut.items()):
-            residual[l]= r / (r + s)
-            shortcut[l]= s / (r + s)
-            
+        for (l, r), (_, s) in zip(raw_residual.items(), raw_shortcut.items()):
+            total = r + s
+            residual[l] = r / total
+            shortcut[l] = s / total
+
         return {
             'residual': residual,
             'shortcut': shortcut
