@@ -1,4 +1,3 @@
-
 import numpy as np
 from core.ironframe.ironframe import Tensor, add, mul, matmul, mean, sub, div, sqrt
 from types import MappingProxyType
@@ -133,11 +132,11 @@ class LayerNorm(Layer):
         N = X_hat.data.shape[-1]
 
         # gradients for gamma and beta
-        if self.gamma.grad:
+        if self.gamma.grad is not None:
             self.gamma.grad += mean(grad * X_hat, axis=0)
         else:
             self.gamma.grad = mean(grad * X_hat, axis=0)
-        if self.beta.grad:
+        if self.beta.grad is not None:
             self.beta.grad += mean(grad, axis=0)
         else:
             self.beta.grad = mean(grad, axis=0)
