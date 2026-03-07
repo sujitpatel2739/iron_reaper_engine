@@ -38,7 +38,8 @@ class PathDominanceProfile(InterpreterProfile):
         residual = {}
         shortcut = {}
         for (l, r), (_, s) in zip(raw_residual.items(), raw_shortcut.items()):
-            total = r + s
+            r, s = r[0], s[0]
+            total = r+s
             residual[l] = r / total
             shortcut[l] = s / total
 
