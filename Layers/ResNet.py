@@ -40,7 +40,7 @@ class ResBlock(Layer):
         out = s + f
         if self.lnorm_mode == 'post':
             # Post-activation normalization
-            out = self.lnorm.forward(out)
+            out = self.lnorm(out)
             
         self._cache[3]['residual'] = f
         self._cache[3]['shortcut'] = s
