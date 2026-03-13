@@ -1,49 +1,56 @@
-import numpy as np
+"""
+Profiles.py
+-----------
+Interpreter profiles. MetricStore is imported as a module — no instance,
+no injection. Profiles read directly from MetricStore.get_sequence().
 
-from diag.MetricStore import MetricStore
+Profiles no longer accept a store argument — they call MetricStore directly.
+The only argument needed is run_id to scope which run's data to read.
+"""
+
+import numpy as np
+import diag.MetricStore as MetricStore
+
 
 class InterpreterProfile:
-    def __init__(self, name, run):
-        self.name = name
-        self.run = run
-        
-    def __call__(self, store):
-        raise NotImplementedError("InterpreterProfile __call__ method must be implemented in subclasses.")
+    def __init__(self, name: str, run_id: int = 0):
+        self.name   = name
+        self.run_id = run_id
+
+    def __call__(self) -> dict:
+        raise NotImplementedError
 
 
 class SignalStatsProfile(InterpreterProfile):
-    name = "signal_state"
+    """
+    Reads activation and gradient statistics per layer from MetricStore.
+    Returns per-layer mean-aggregated values ready for plotting.
+    """
 
-    def __call__(self, store):
-        activation_mean = store.get_layer_sequence(self.run, "activation_mean")
-        activation_var = store.get_layer_sequence(self.run, "activation_var")
-        grad_norm = store.get_layer_sequence(self.run, "grad_norm")
-        grad_var = store.get_layer_sequence(self.run, "grad_var")
-        
+    def __call__(self) -> dict:
         return {
-            'activation_mean': activation_mean,
-            'activation_var': activation_var,
-            'grad_norm': grad_norm,
-            'grad_var': grad_var
+            "activation_mean": MetricStore.get_sequence(self.run_id, "activation_mean", agg="mean"),
+            "activation_var":  MetricStore.get_sequence(self.run_id, "activation_var",  agg="mean"),
+            "grad_norm":       MetricStore.get_sequence(self.run_id, "grad_norm",        agg="mean"),
+            "grad_var":        MetricStore.get_sequence(self.run_id, "grad_var",         agg="mean"),
         }
 
-                    
+
 class PathDominanceProfile(InterpreterProfile):
-    name = "path_dominance"
+    """
+    Computes fractional energy split between residual and shortcut paths.
+    Only meaningful for layers that wrote residual_energy / shortcut_energy
+    (i.e. ResBlock-style composite layers).
+    """
 
-    def __call__(self, store):
-        raw_residual = store.get_layer_sequence(self.run, "residual_energy")
-        raw_shortcut = store.get_layer_sequence(self.run, "shortcut_energy")
+    def __call__(self) -> dict:
+        raw_residual = MetricStore.get_sequence(self.run_id, "residual_energy", agg="mean")
+        raw_shortcut = MetricStore.get_sequence(self.run_id, "shortcut_energy", agg="mean")
 
-        residual = {}
-        shortcut = {}
+        residual, shortcut = {}, {}
         for (l, r), (_, s) in zip(raw_residual.items(), raw_shortcut.items()):
-            r, s = r[0], s[0]
-            total = r+s
+            total       = r + s
             residual[l] = r / total
             shortcut[l] = s / total
 
-        return {
-            'residual': residual,
-            'shortcut': shortcut
-        }
+        return {"residual": residual, "shortcut": shortcut}
