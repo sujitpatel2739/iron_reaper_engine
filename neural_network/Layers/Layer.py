@@ -1,0 +1,169 @@
+"""
+Layer.py
+--------
+Base Layer and primitive layer implementations.
+
+CacheStore is imported as a module — no instance, no injection.
+Layers call CacheStore.write() / CacheStore.read_required() directly.
+
+_state remains a private instance dict on each layer — it holds
+internal working memory (mask, X_hat, std) that only that layer's
+own backward ever reads. It is never accessed from outside.
+"""
+
+import numpy as np
+from types import MappingProxyType
+
+import cache.CacheStore as CacheStore
+from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
+from core.ironframe.ironframe import Tensor, add, mul, matmul, mean, sqrt
+
+
+# ---------------------------------------------------------------------------
+# Base
+# ---------------------------------------------------------------------------
+
+class Layer:
+    def __init__(self, layer_id: int, name: str = ""):
+        self.id         = layer_id
+        self.name       = f"layer_{layer_id}" if not name else name
+        self.type       = type(self).__name__.lower()
+        self.parameters = {}
+        self._state     = {}   # private working memory for this layer's backward
+        self._detached = False
+        object.__setattr__(self, '_detached', False)
+
+    def __call__(self, x: Tensor) -> Tensor:
+        if self._detached:
+            return x
+        return self._forward(x)
+
+    def backward(self, grad: Tensor) -> Tensor:
+        if self._detached:
+            return grad
+        return self._backward(grad)
+
+    def _forward(self, x: Tensor) -> Tensor:
+        raise NotImplementedError
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        raise NotImplementedError
+
+    def __setattr__(self, name, value):
+        if getattr(self, '_detached', False):
+            raise AttributeError(
+                f"Layer '{self.name}' is detached (immutable). "
+                f"Cannot set '{name}'."
+            )
+        super().__setattr__(name, value)
+
+    def detach(self):
+        if hasattr(self, 'parameters'):
+            object.__setattr__(self, 'parameters', MappingProxyType(self.parameters))
+        object.__setattr__(self, '_detached', True)
+        return self
+
+    # -- CacheStore helpers --------------------------------------------------
+
+    def _write(self, slot: str, tensor: Tensor) -> None:
+        CacheStore.write(self.id, slot, tensor)
+
+    def _read(self, slot: str) -> Tensor:
+        return CacheStore.read_required(self.id, slot)
+
+
+# ---------------------------------------------------------------------------
+# Linear
+# ---------------------------------------------------------------------------
+
+class Linear(Layer):
+    def __init__(self, layer_id: int, in_features: int, out_features: int, name: str = ""):
+        super().__init__(layer_id, name)
+        std      = np.sqrt(2.0 / in_features)
+        self.W   = Tensor(np.random.normal(0, std, (in_features, out_features)), requires_grad=True)
+        self.b   = Tensor(np.zeros((1, out_features)), requires_grad=True)
+        self.parameters = {'W': self.W, 'b': self.b}
+
+    def _forward(self, X: Tensor) -> Tensor:
+        self._write(SLOT_INPUT, X)
+        out = add(matmul(X, self.W), self.b)
+        self._write(SLOT_OUTPUT, out)
+        return out
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        self._write(SLOT_GRAD_OUT, grad)
+        grad_X = matmul(grad, self.W.transpose())
+        self._write(SLOT_GRAD_IN, grad_X)
+        return grad_X
+
+
+# ---------------------------------------------------------------------------
+# ReLU
+# ---------------------------------------------------------------------------
+
+class Relu(Layer):
+    def __init__(self, layer_id: int, name: str = ""):
+        super().__init__(layer_id, name)
+
+    def _forward(self, x: Tensor) -> Tensor:
+        self._write(SLOT_INPUT, x)
+        self._state['mask'] = x.data > 0
+        out = Tensor(np.maximum(0, x.data), requires_grad=x.requires_grad)
+        self._write(SLOT_OUTPUT, out)
+        return out
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        self._write(SLOT_GRAD_OUT, grad)
+        grad_X = Tensor(grad.data * self._state['mask'], requires_grad=grad.requires_grad)
+        self._write(SLOT_GRAD_IN, grad_X)
+        return grad_X
+
+
+# ---------------------------------------------------------------------------
+# LayerNorm
+# ---------------------------------------------------------------------------
+
+class LayerNorm(Layer):
+    def __init__(self, layer_id: int, in_features: int, eps: float = 1e-5, name: str = ""):
+        super().__init__(layer_id, name)
+        self.eps   = eps
+        self.gamma = Tensor(np.ones((1, in_features)),  requires_grad=True)
+        self.beta  = Tensor(np.zeros((1, in_features)), requires_grad=True)
+        self.parameters = {'gamma': self.gamma, 'beta': self.beta}
+
+    def _forward(self, X: Tensor) -> Tensor:
+        self._write(SLOT_INPUT, X)
+
+        mu    = mean(X, axis=-1, keepdims=True)
+        X_mu  = X - mu
+        var   = mean(X_mu * X_mu, axis=-1, keepdims=True)
+        eps   = Tensor(np.ones_like(var.data) * self.eps, requires_grad=False)
+        std   = sqrt(var + eps)
+        X_hat = X_mu / std
+        out   = (self.gamma * X_hat) + self.beta
+
+        self._state['X_hat'] = X_hat   # private — only _backward reads this
+        self._state['std']   = std
+
+        self._write(SLOT_OUTPUT, out)
+        return out
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        self._write(SLOT_GRAD_OUT, grad)
+
+        X_hat = self._state['X_hat']
+        std   = self._state['std']
+
+        dg = mean(grad * X_hat, axis=0)
+        db = mean(grad, axis=0)
+        self.gamma.grad = self.gamma.grad + dg if self.gamma.grad is not None else dg
+        self.beta.grad  = self.beta.grad  + db if self.beta.grad  is not None else db
+
+        dX_hat = grad * self.gamma
+        term1  = dX_hat
+        term2  = mean(dX_hat, axis=-1, keepdims=True)
+        term3  = X_hat * mean(dX_hat * X_hat, axis=-1, keepdims=True)
+        grad_X = ((term1 - term2) - term3) / std
+
+        self._write(SLOT_GRAD_IN, grad_X)
+        return grad_X
