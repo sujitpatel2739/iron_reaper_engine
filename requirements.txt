@@ -1,5 +1,10 @@
 numpy>=1.21.0
 matplotlib>=3.4.0
+torch>=2.0.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9    # required for FastAPI file/form uploads
+pydantic>=2.0.0
 
 # Optional / developer tools (uncomment to use)
 # pytest
