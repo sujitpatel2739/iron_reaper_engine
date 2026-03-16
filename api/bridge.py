@@ -133,34 +133,73 @@ def graph_from_model(model: nn.Module) -> dict:
 # Model loading
 # ---------------------------------------------------------------------------
 
-def load_model(file_bytes: bytes) -> Tuple[nn.Module, List[str]]:
+def load_model(file_bytes: bytes) -> tuple:
     """
-    Load a PyTorch model from raw bytes.
+    Load a PyTorch model from raw bytes (.pt / .pth).
+ 
     Supports full models saved with torch.save(model, path).
-    State dicts raise a clear ValueError.
-    Returns (model, warnings).
+    Does NOT support bare state dicts — raises a clear ValueError if detected.
+ 
+    PyTorch 2.6 compatibility
+    -------------------------
+    We try three strategies in order, stopping at the first that succeeds:
+ 
+    1. weights_only=True  — safest, works for state dicts and simple models
+    2. weights_only=False — required for full model objects containing custom classes
+    3. Neither worked     — raise a descriptive error pointing the user to the fix
+ 
+    Returns (model, warnings: List[str])
     """
-    warnings: List[str] = []
-    buf = io.BytesIO(file_bytes)
-
+    warnings = []
+ 
+    # Strategy 1: weights_only=True (safe, PyTorch 2.6+ default)
     try:
+        buf = io.BytesIO(file_bytes)
+        obj = torch.load(buf, map_location="cpu", weights_only=True)
+        return _validate_and_return(obj, warnings)
+    except Exception:
+        pass  # fall through to strategy 2
+ 
+    # Strategy 2: weights_only=False (required for full model objects)
+    try:
+        buf = io.BytesIO(file_bytes)
         obj = torch.load(buf, map_location="cpu", weights_only=False)
+        warnings.append(
+            "Model loaded with weights_only=False because it contains a full "
+            "model class (not just a state dict). Only load files from trusted sources."
+        )
+        return _validate_and_return(obj, warnings)
     except Exception as e:
-        raise ValueError(f"Could not load file as a PyTorch object: {e}")
-
+        # Both strategies failed — give a clear, actionable error
+        raise ValueError(
+            f"Failed to load the uploaded file as a PyTorch model.\n\n"
+            f"Most likely cause: the file was saved with torch.save(model, path) "
+            f"using a custom model class that is not available in this environment.\n\n"
+            f"To fix this:\n"
+            f"  • Make sure you upload the full model, not just a state dict.\n"
+            f"  • If your model uses a custom class, torch.save(model.state_dict(), path) "
+            f"cannot be used — the full model object is required.\n\n"
+            f"Original error: {e}"
+        )
+ 
+ 
+def _validate_and_return(obj, warnings):
+    """Check the loaded object is a usable nn.Module and return it."""
     if isinstance(obj, nn.Module):
         obj.eval()
         return obj, warnings
-
+ 
     if isinstance(obj, dict):
+        # Looks like a state dict
         raise ValueError(
-            "Uploaded file appears to be a state_dict, not a full model. "
-            "Save the full model with torch.save(model, path)."
+            "The uploaded file appears to be a state dict "
+            "(saved with torch.save(model.state_dict(), path)), not a full model.\n"
+            "Please re-save your model with torch.save(model, path) and upload again."
         )
-
+ 
     raise ValueError(
-        f"Unrecognised object in .pt file: {type(obj).__name__}. "
-        "Expected nn.Module."
+        f"Unrecognised object type in file: {type(obj).__name__}. "
+        "Expected a torch.nn.Module."
     )
 
 
