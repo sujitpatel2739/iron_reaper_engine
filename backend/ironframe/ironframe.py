@@ -8,6 +8,8 @@ class Tensor:
         self.requires_grad = requires_grad
         self.backward_fn = None
         self.freezed = False
+
+        __hash__ = False
     
     def backward(self, grad=None):
         if not self.requires_grad and not self.freezed:
