@@ -219,42 +219,5 @@ def sqrt(t):
     return out
 
 
-# DRIVER CODE ----------------------------------------------------------------
-
-# m samples = 1000
-# m = 1000
-# n Features = 100
-# n = 100 
-# W = Tensor(np.random.randn(n, 1) * 0.01, requires_grad=True)
-# b = Tensor(np.zeros((1, 1)), requires_grad=True)
-
-# def linear_forward(X_np, W, b):
-#     X = Tensor(X_np, requires_grad=False)
-#     return add(matmul(X, W), b)
-
-def mse_loss(y_pred, y_true_np):
-    y_true = Tensor(y_true_np, requires_grad=False)
-
-    neg_y = mul(y_true, Tensor(-1.0))
-    diff = add(y_pred, neg_y)
-    diff_sq = mul(diff, diff)
-
-    return mean(diff_sq)
-
-# # forward   
-# X_np = np.array(np.random.randn(m, n)*0.01)
-# y_true_np = np.array(np.random.randn(m, 1)*0.01)
-# y_pred = linear_forward(X_np, W, b)
-# loss = mse_loss(y_pred, y_true_np)
-
-# # backward
-# loss.backward()
-
-# # update (SGD, lr = 0.01)
-# lr = 0.01
-
-# W.data = W.data - (lr * W.grad)
-# W.grad = None
-
 # b.data = b.data - (lr * b.grad)
 # b.grad = None
