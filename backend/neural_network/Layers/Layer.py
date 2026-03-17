@@ -125,7 +125,7 @@ class LeakyRelu(Layer):
     def _forward(self, x: Tensor) -> Tensor:
         self._write(SLOT_INPUT, x, 'input')
         self._state['mask'] = x.data > 0
-        out = Tensor(np.where(self._state['mask'], x.data, x.data * self.alpha), requires_grad=x.requires_grad)
+        out = Tensor(np.where(self._state['mask'], 1, x.data * self.alpha), requires_grad=x.requires_grad)
         self._write(SLOT_OUTPUT, out, 'out')
         return out
 
@@ -146,8 +146,8 @@ class Elu(Layer):
 
     def _forward(self, x: Tensor) -> Tensor:
         self._write(SLOT_INPUT, x, 'input')
-        self._state['mask'] = x > 0
-        out = x if x > 0 else self.alpha * (np.exp(x.data) - 1 )
+        self._state['mask'] = x.data > 0
+        out = Tensor(np.where(self._state['mask'], x.data, self.alpha * (np.exp(x.data) - 1)), requires_grad=x.requires_grad)
         out = Tensor(out, requires_grad=x.requires_grad)
         self._write(SLOT_OUTPUT, out, 'out')
         return out
@@ -155,7 +155,10 @@ class Elu(Layer):
     def _backward(self, grad: Tensor) -> Tensor:
         self._write(SLOT_GRAD_OUT, grad, 'grad_out')
         mask = self._state['mask']
-        grad_X = Tensor(grad * mask, requires_grad=grad.requires_grad)
+        grad_X = Tensor(
+            np.where(mask, grad.data, grad.data * self.alpha),
+            requires_grad=grad.requires_grad
+        )
         self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
 
