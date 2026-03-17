@@ -132,10 +132,30 @@ class LeakyRelu(Layer):
 
     def _backward(self, grad: Tensor) -> Tensor:
         self._write(SLOT_GRAD_OUT, grad, 'grad_out')
-        
-        grad_X = Tensor(, requires_grad=grad.requires_grad)
+        mask = self._state['mask']
+        grad_X = Tensor(grad * mask, requires_grad=grad.requires_grad)
         self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
+    
+# class Elu(Layer):
+#     def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
+#         super().__init__(layer_id, name)
+#         self.alpha = alpha
+
+#     def _forward(self, x: Tensor) -> Tensor:
+#         self._write(SLOT_INPUT, x, 'input')
+#         self._state['mask'] = x.data > 0
+#         out = 1 if x > 0 else x * self.alpha
+#         out = Tensor(out, requires_grad=x.requires_grad)
+#         self._write(SLOT_OUTPUT, out, 'out')
+#         return out
+
+#     def _backward(self, grad: Tensor) -> Tensor:
+#         self._write(SLOT_GRAD_OUT, grad, 'grad_out')
+#         mask = self._state['mask']
+#         grad_X = Tensor(grad * mask, requires_grad=grad.requires_grad)
+#         self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
+#         return grad_X
 
 class Sigmoid(Layer):
     def __init__(self, layer_id: int, name: str = ""):
