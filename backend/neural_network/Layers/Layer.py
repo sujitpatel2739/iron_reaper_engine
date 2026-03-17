@@ -16,7 +16,7 @@ from types import MappingProxyType
 
 import cache.CacheStore as CacheStore
 from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
-from core.ironframe.ironframe import Tensor, add, mul, matmul, mean, sqrt
+from ironframe.ironframe import Tensor, add, mul, matmul, mean, sqrt
 
 
 # ---------------------------------------------------------------------------
@@ -65,12 +65,11 @@ class Layer:
 
     # -- CacheStore helpers --------------------------------------------------
 
-    def _write(self, slot: str, tensor: Tensor) -> None:
-        CacheStore.write(self.id, slot, tensor)
+    def _write(self, slot: str, tensor: Tensor, key: str) -> None:
+        CacheStore.write(self.id, slot, tensor, key)
 
-    def _read(self, slot: str) -> Tensor:
-        return CacheStore.read_required(self.id, slot)
-
+    def _read(self, slot: str, key: str) -> Tensor:
+        return CacheStore.read_required(self.id, slot, key)
 
 # ---------------------------------------------------------------------------
 # Linear
@@ -85,20 +84,20 @@ class Linear(Layer):
         self.parameters = {'W': self.W, 'b': self.b}
 
     def _forward(self, X: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, X)
+        self._write(SLOT_INPUT, X, 'input')
         out = add(matmul(X, self.W), self.b)
-        self._write(SLOT_OUTPUT, out)
+        self._write(SLOT_OUTPUT, out, 'out')
         return out
 
     def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
+        self._write(SLOT_GRAD_OUT, grad, 'grad_out')
         grad_X = matmul(grad, self.W.transpose())
-        self._write(SLOT_GRAD_IN, grad_X)
+        self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
 
 
 # ---------------------------------------------------------------------------
-# ReLU
+# Activation Layers
 # ---------------------------------------------------------------------------
 
 class Relu(Layer):
@@ -106,16 +105,54 @@ class Relu(Layer):
         super().__init__(layer_id, name)
 
     def _forward(self, x: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, x)
+        self._write(SLOT_INPUT, x, 'input')
         self._state['mask'] = x.data > 0
         out = Tensor(np.maximum(0, x.data), requires_grad=x.requires_grad)
-        self._write(SLOT_OUTPUT, out)
+        self._write(SLOT_OUTPUT, out, 'out')
         return out
 
     def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
+        self._write(SLOT_GRAD_OUT, grad, 'grad_out')
         grad_X = Tensor(grad.data * self._state['mask'], requires_grad=grad.requires_grad)
-        self._write(SLOT_GRAD_IN, grad_X)
+        self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
+        return grad_X
+
+class LeakyRelu(Layer):
+    def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
+        super().__init__(layer_id, name)
+        self.alpha = alpha
+
+    def _forward(self, x: Tensor) -> Tensor:
+        self._write(SLOT_INPUT, x, 'input')
+        self._state['mask'] = x.data > 0
+        out = 1 if x > 0 else x * self.alpha
+        out = Tensor(out, requires_grad=x.requires_grad)
+        self._write(SLOT_OUTPUT, out, 'out')
+        return out
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        self._write(SLOT_GRAD_OUT, grad, 'grad_out')
+        
+        grad_X = Tensor(, requires_grad=grad.requires_grad)
+        self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
+        return grad_X
+
+class Sigmoid(Layer):
+    def __init__(self, layer_id: int, name: str = ""):
+        super().__init__(layer_id, name)
+        
+    def _forward(self, x: Tensor) -> Tensor:
+        self._write(SLOT_INPUT, x, 'input')
+        self._state['mask'] = x.data > 0
+        out = Tensor(1 / 1 + np.exp(x.data) , requires_grad=x.requires_grad)
+        self._write(SLOT_OUTPUT, out, 'out')
+        return out
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        self._write(SLOT_GRAD_OUT, grad, 'grad_out')
+        out = self._read(SLOT_OUTPUT, 'out')
+        grad_X = grad * out * (1 - out)
+        self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
 
 
@@ -132,7 +169,7 @@ class LayerNorm(Layer):
         self.parameters = {'gamma': self.gamma, 'beta': self.beta}
 
     def _forward(self, X: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, X)
+        self._write(SLOT_INPUT, X, 'input')
 
         mu    = mean(X, axis=-1, keepdims=True)
         X_mu  = X - mu
@@ -145,11 +182,11 @@ class LayerNorm(Layer):
         self._state['X_hat'] = X_hat   # private — only _backward reads this
         self._state['std']   = std
 
-        self._write(SLOT_OUTPUT, out)
+        self._write(SLOT_OUTPUT, out, 'out')
         return out
 
     def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
+        self._write(SLOT_GRAD_OUT, grad, 'grad_out')
 
         X_hat = self._state['X_hat']
         std   = self._state['std']
@@ -165,5 +202,5 @@ class LayerNorm(Layer):
         term3  = X_hat * mean(dX_hat * X_hat, axis=-1, keepdims=True)
         grad_X = ((term1 - term2) - term3) / std
 
-        self._write(SLOT_GRAD_IN, grad_X)
+        self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
