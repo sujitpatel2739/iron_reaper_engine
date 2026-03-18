@@ -117,48 +117,22 @@ class Relu(Layer):
         self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
 
-class LeakyRelu(Layer):
-    def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
+class Tanh(Layer):
+    def __init__(self, layer_id: int, name: str = ""):
         super().__init__(layer_id, name)
-        self.alpha = alpha
 
     def _forward(self, x: Tensor) -> Tensor:
         self._write(SLOT_INPUT, x, 'input')
-        self._state['mask'] = x.data > 0
-        out = Tensor(np.where(self._state['mask'], 1, x.data * self.alpha), requires_grad=x.requires_grad)
-        self._write(SLOT_OUTPUT, out, 'out')
-        return out
-
-    def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad, 'grad_out')
-        mask = self._state['mask']
-        grad_X = Tensor(
-            np.where(mask, grad.data, grad.data * self.alpha),
-            requires_grad=grad.requires_grad
-        )
-        self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
-        return grad_X
-    
-class Elu(Layer):
-    def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
-        super().__init__(layer_id, name)
-        self.alpha = alpha
-
-    def _forward(self, x: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, x, 'input')
-        self._state['mask'] = x.data > 0
-        out = Tensor(np.where(self._state['mask'], x.data, self.alpha * (np.exp(x.data) - 1)), requires_grad=x.requires_grad)
+        out = (np.exp(x.data) - np.exp(-x.data)) / (np.exp(x.data) + np.exp(-x.data))
         out = Tensor(out, requires_grad=x.requires_grad)
         self._write(SLOT_OUTPUT, out, 'out')
         return out
 
     def _backward(self, grad: Tensor) -> Tensor:
         self._write(SLOT_GRAD_OUT, grad, 'grad_out')
-        mask = self._state['mask']
-        grad_X = Tensor(
-            np.where(mask, grad.data, grad.data * self.alpha),
-            requires_grad=grad.requires_grad
-        )
+        out = self._read(SLOT_OUTPUT, 'out')
+        grad_X = grad * (1 - np.pow(out.data, 2))
+        grad_X = Tensor(grad_X, requires_grad=grad.requires_grad)
         self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
 
@@ -180,7 +154,71 @@ class Sigmoid(Layer):
         self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
 
+class LeakyRelu(Layer):
+    def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
+        super().__init__(layer_id, name)
+        self.alpha = alpha
 
+    def _forward(self, x: Tensor) -> Tensor:
+        self._write(SLOT_INPUT, x, 'input')
+        self._state['mask'] = x.data > 0
+        out = Tensor(np.where(self._state['mask'], x.data, x.data * self.alpha), requires_grad=x.requires_grad)
+        self._write(SLOT_OUTPUT, out, 'out')
+        return out
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        self._write(SLOT_GRAD_OUT, grad, 'grad_out')
+        mask = self._state['mask']
+        grad_X = Tensor(
+            np.where(mask, grad.data, grad.data * self.alpha),
+            requires_grad=grad.requires_grad
+        )
+        self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
+        return grad_X
+    
+class Elu(Layer):
+    def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
+        super().__init__(layer_id, name)
+        self.alpha = alpha
+
+    def _forward(self, x: Tensor) -> Tensor:
+        self._write(SLOT_INPUT, x, 'input')
+        self._state['input'] = x.data
+        self._state['mask'] = x.data > 0
+        out = Tensor(np.where(self._state['mask'], x.data, self.alpha * (np.exp(x.data) - 1)), requires_grad=x.requires_grad)
+        out = Tensor(out, requires_grad=x.requires_grad)
+        self._write(SLOT_OUTPUT, out, 'out')
+        return out
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        self._write(SLOT_GRAD_OUT, grad, 'grad_out')
+        x = self._state['input']
+        mask = self._state['mask']
+        grad_X = Tensor(
+            np.where(mask, grad.data, grad.data * self.alpha * np.exp(x)),
+            requires_grad=grad.requires_grad
+        )
+        self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
+        return grad_X
+
+# class Gelu(Layer):
+#     def __init__(self, layer_id: int, name: str = ""):
+#         super().__init__(layer_id, name)
+        
+#     def _forward(self, x: Tensor) -> Tensor:
+#         self._write(SLOT_INPUT, x, 'input')
+#         self._state['mask'] = x.data > 0
+#         out = Tensor(1 / 1 + np.exp(x.data) , requires_grad=x.requires_grad)
+#         self._write(SLOT_OUTPUT, out, 'out')
+#         return out
+
+#     def _backward(self, grad: Tensor) -> Tensor:
+#         self._write(SLOT_GRAD_OUT, grad, 'grad_out')
+#         out = self._read(SLOT_OUTPUT, 'out')
+#         grad_X = grad * out * (1 - out)
+#         self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
+#         return grad_X
+    
 # ---------------------------------------------------------------------------
 # LayerNorm
 # ---------------------------------------------------------------------------
@@ -227,5 +265,73 @@ class LayerNorm(Layer):
         term3  = X_hat * mean(dX_hat * X_hat, axis=-1, keepdims=True)
         grad_X = ((term1 - term2) - term3) / std
 
+        self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
+        return grad_X
+    
+    
+# ---------------------------------------------------------------------------
+# LayerNorm
+# ---------------------------------------------------------------------------
+
+class Conv2d(Layer):
+    def __init__(self, layer_id: int, in_channels: int, out_channels: int,
+                 kernel_size: tuple|int = (3,3), stride: tuple|int = (1,1),
+                 padding:tuple|str = 'same', name: str = ""):
+        super().__init__(layer_id, name)
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
+        self.padding = padding
+        std = sqrt(2.0/in_channels)
+        self.W = Tensor(np.random.normal(0, std, (out_channels, in_channels, kernel_size[0], kernel_size[1])), requires_grad=True)
+        self.b = Tensor(np.zeros((out_channels, 1, 1)), requires_grad=True)
+        self.parameters = {'W': self.W, 'b': self.b}
+        
+
+    def _forward(self, X: Tensor) -> Tensor:
+        self._write(SLOT_INPUT, X, 'input')
+        if isinstance(self.padding, tuple):
+            padding_H, padding_W = self.padding
+        elif self.padding == 'same':
+            padding_H = (self.kernel_size[0] - 1) // 2
+            padding_W = (self.kernel_size[1] - 1) // 2
+        else:
+            raise Exception('Error: Unknown padding type!')
+        
+        # Calculating ou_H and out_W. dim-0 is channel dimension
+        out_H = (X.shape[1] - self.kernel_size[0] + (2 * padding_H)) // self.stride[0]+1
+        out_W = (X.shape[2] - self.kernel_size[1] + (2 * padding_W)) // self.stride[1]+1
+        
+        X_padded = np.pad(
+            X,
+            ((0,0), (padding_H, padding_H), (padding_W, padding_W)),
+            mode='constant',
+            constant_values=0
+        )
+        
+        for i in range(out_H):
+            for j in range(out_W):
+                # stride controls where you START extracting each patch
+                row_start = i * self.stride[0]
+                col_start = j * self.stride[1]
+
+                patch = X_padded[
+                    :,                                             # all channels
+                    row_start : row_start + self.kernel_size[0],   # vertical slice
+                    col_start : col_start + self.kernel_size[1]    # horizontal slice
+                ]
+                
+                # Flattening patch into 1D array
+                X_tf = np.resize(X.data, (1, X.shape[0] * X.shape[1], X.shape[2]))
+                # kernel_tf = 
+                
+        out = add(matmul(X, self.W), self.b)
+        self._write(SLOT_OUTPUT, out, 'out')
+        return out
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        self._write(SLOT_GRAD_OUT, grad, 'grad_out')
+        grad_X = matmul(grad, self.W.transpose())
         self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
