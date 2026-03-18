@@ -324,7 +324,7 @@ class Conv2d(Layer):
                 
                 # Flattening patch into 1D array
                 X_tf = np.resize(X.data, (out_H, patch.shape[0] * patch.shape[1], patch.shape[2]))
-                # kernel_tf = 
+                kernel_tf = np.resize(self.W.data, (self.out_channels, self.kernel_size[0] * self.kernel_size[1]))
                 
         out = add(matmul(X, self.W), self.b)
         self._write(SLOT_OUTPUT, out, 'out')
