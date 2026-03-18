@@ -10,7 +10,7 @@ class Tensor:
         self.freezed = False
 
         __hash__ = False
-    
+        
     def backward(self, grad=None):
         if not self.requires_grad and not self.freezed:
             return
@@ -54,6 +54,10 @@ class Tensor:
             out.backward_fn = _backward
             
         return out
+
+    @property
+    def shape(self):
+        return self.data.shape
     
     def __add__(self, other):
         if not isinstance(other, Tensor):
@@ -113,22 +117,48 @@ class Tensor:
             result = result * self
         return result
     
-    def __gt__(self, other):
+    def __lt__(self, other):
         if not isinstance(other, Tensor):
             other = Tensor(other, requires_grad=False)
-        return Tensor(self.data > other.data, requires_grad=False)
-
-    def __lt__(self, other):
-        ...
+        return Tensor(self.data < other.data, requires_grad=False)
 
     def __eq__(self, other):
-        ...
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        return Tensor(self.data == other.data, requires_grad=False)
 
     def __ge__(self, other):
-        ...
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        return Tensor(self.data >= other.data, requires_grad=False)
 
     def __le__(self, other):
-        ...
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        return Tensor(self.data <= other.data, requires_grad=False)
+
+    def __ne__(self, other):
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        return Tensor(self.data != other.data, requires_grad=False)
+
+    def __iadd__(self, other):
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        self.data = self.data + other.data
+        return self
+
+    def __isub__(self, other):
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        self.data = self.data - other.data
+        return self
+
+    def __imul__(self, other):
+        if not isinstance(other, Tensor):
+            other = Tensor(other, requires_grad=False)
+        self.data = self.data * other.data
+        return self
     
     def freeze(self):
         detached = self.detach()
@@ -219,7 +249,3 @@ def sqrt(t):
             return [grad / (2 * np.sqrt(t.data))]
         out.backward_fn = backward_fn
     return out
-
-
-# b.data = b.data - (lr * b.grad)
-# b.grad = None
