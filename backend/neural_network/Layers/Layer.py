@@ -323,7 +323,7 @@ class Conv2d(Layer):
                 ]
                 
                 # Flattening patch into 1D array
-                X_tf = np.resize(X.data, (1, X.shape[0] * X.shape[1], X.shape[2]))
+                X_tf = np.resize(X.data, (out_H, patch.shape[0] * patch.shape[1], patch.shape[2]))
                 # kernel_tf = 
                 
         out = add(matmul(X, self.W), self.b)
