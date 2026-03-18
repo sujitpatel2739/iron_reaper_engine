@@ -326,9 +326,13 @@ class Conv2d(Layer):
                 # Flattening patch & kernels into 1D array
                 patch_tf = np.resize(X.data, (1, patch.shape[0] * patch.shape[1] * patch.shape[2]))
                 X_patch_stack.append(patch_tf)
-                
-                
-        out = add(matmul(X, self.W), self.b)
+
+        kernel_tf = Tensor(np.resize(self.W.data,
+                            (self.out_channels, self.kernel_size[0] * self.kernel_size[1])),
+                            requires_grad=True)
+        X_tf = Tensor(X_patch_stack, requires_grad=True)
+        
+        out = (X_tf @ kernel_tf) + self.b
         self._write(SLOT_OUTPUT, out, 'out')
         return out
 
