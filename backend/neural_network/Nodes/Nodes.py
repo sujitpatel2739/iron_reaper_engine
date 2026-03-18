@@ -1,7 +1,7 @@
-from Node import Node
+from neural_network.Nodes.Node import Node
 import numpy as np
 from typing import List, Optional
-from core.ironframe.ironframe import Tensor
+from ironframe.ironframe import Tensor
 
 # ---------------------------------------------------------------------------
 # Arithmetic nodes
@@ -329,3 +329,25 @@ class SplitNode(Node):
 
     def _backward(self, grad):     # satisfies ABC but not used directly
         pass
+    
+class ConditionNode(Node):
+    """
+    Executes paths based on condition.
+    
+    Parameters
+    __________
+    condition : str — Condition(s)
+    
+    Backward
+    ________
+    """
+    
+    def __init__(self, condition: str):
+        super().__init__()
+
+    def _forward(self, *inputs: Tensor) -> Tensor:
+        ...
+
+    def _backward(self, grad: Tensor) -> List[Tensor]:
+        ...
+    
