@@ -310,7 +310,6 @@ class Conv2d(Layer):
             constant_values=0
         )
 
-        kernel_tf = np.resize(self.W.data, (self.out_channels, self.kernel_size[0] * self.kernel_size[1]))
         X_patch_stack = [] # Shape: ((out_H-1) * (out_w-1), self.kernel_size[0] * self.kernel_size[1])
         for i in range(out_H):
             for j in range(out_W):
@@ -324,8 +323,9 @@ class Conv2d(Layer):
                     col_start : col_start + self.kernel_size[1]    # horizontal slice
                 ]
                 
-                # Flattening patch into 1D array
-                X_tf = np.resize(X.data, (1, patch.shape[0] * patch.shape[1] * patch.shape[2]))
+                # Flattening patch & kernels into 1D array
+                patch_tf = np.resize(X.data, (1, patch.shape[0] * patch.shape[1] * patch.shape[2]))
+                X_patch_stack.append(patch_tf)
                 
                 
         out = add(matmul(X, self.W), self.b)
