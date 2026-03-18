@@ -311,6 +311,7 @@ class Conv2d(Layer):
         )
 
         kernel_tf = np.resize(self.W.data, (self.out_channels, self.kernel_size[0] * self.kernel_size[1]))
+        X_patch_stack = [] # Shape: ((out_H-1) * (out_w-1), self.kernel_size[0] * self.kernel_size[1])
         for i in range(out_H):
             for j in range(out_W):
                 # stride controls where you START extracting each patch
@@ -325,7 +326,7 @@ class Conv2d(Layer):
                 
                 # Flattening patch into 1D array
                 X_tf = np.resize(X.data, (1, patch.shape[0] * patch.shape[1] * patch.shape[2]))
-                kernel_tf = np.resize(self.W.data, (self.out_channels, self.kernel_size[0] * self.kernel_size[1]))
+                
                 
         out = add(matmul(X, self.W), self.b)
         self._write(SLOT_OUTPUT, out, 'out')
