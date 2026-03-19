@@ -315,7 +315,7 @@ class Conv2d(Layer):
         )
 
         # im2col — each patch becomes one row
-        X_col = []
+        X_tf = []
         for i in range(out_H):
             for j in range(out_W):
                 row_start = i * self.stride[0]
@@ -326,23 +326,22 @@ class Conv2d(Layer):
                     row_start : row_start + self.kernel_size[0],
                     col_start : col_start + self.kernel_size[1]
                 ]
-                X_col.append(patch.reshape(1, -1))  # (1, in_C * kH * kW)
+                X_tf.append(patch.reshape(1, -1))  # (1, in_C * kH * kW)
 
         # shape: (out_H * out_W, in_C * kH * kW)
-        X_col = np.vstack(X_col)
+        X_tf = np.vstack(X_tf)
 
         # reshape kernels: (out_channels, in_C * kH * kW)
-        W_col = self.W.data.reshape(self.out_channels, -1)
+        W_col = self.W.reshape(self.out_channels, -1)
 
         # matmul: (out_H*out_W, in_C*kH*kW) @ (in_C*kH*kW, out_channels)
-        out_col = X_col @ W_col.T   # shape: (out_H*out_W, out_channels)
+        out_tf = X_tf @ W_col.transpose  # shape: (out_H*out_W, out_channels)
 
         # reshape to (out_channels, out_H, out_W)
-        out_data = out_col.T.reshape(self.out_channels, out_H, out_W)
-        out = Tensor(out_data, requires_grad=X.requires_grad)
+        out = out_tf.transpose.reshape(self.out_channels, out_H, out_W)
         out = out + self.b
 
-        self._state['X_col']    = X_col
+        self._state['X_tf']    = X_tf
         self._state['X_padded'] = X_padded
         self._state['W_col']    = W_col
         self._state['out_H']    = out_H
