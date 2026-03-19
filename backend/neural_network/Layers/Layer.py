@@ -291,6 +291,7 @@ class Conv2d(Layer):
 
     def _forward(self, X: Tensor) -> Tensor:
         self._write(SLOT_INPUT, X, 'input')
+
         if isinstance(self.padding, tuple):
             padding_H, padding_W = self.padding
         elif self.padding == 'same':
@@ -298,46 +299,61 @@ class Conv2d(Layer):
             padding_W = (self.kernel_size[1] - 1) // 2
         else:
             raise Exception('Error: Unknown padding type!')
-        
-        # Calculating ou_H and out_W. dim-0 is channel dimension
-        out_H = (X.shape[1] - self.kernel_size[0] + (2 * padding_H)) // self.stride[0]+1
-        out_W = (X.shape[2] - self.kernel_size[1] + (2 * padding_W)) // self.stride[1]+1
-        
+
+        # X shape: (in_channels, H, W) — no batch dim
+        in_C, in_H, in_W = X.shape
+
+        out_H = (in_H - self.kernel_size[0] + 2 * padding_H) // self.stride[0] + 1
+        out_W = (in_W - self.kernel_size[1] + 2 * padding_W) // self.stride[1] + 1
+
+        # pad the raw numpy array
         X_padded = np.pad(
-            X,
-            ((0,0), (padding_H, padding_H), (padding_W, padding_W)),
+            X.data,
+            ((0, 0), (padding_H, padding_H), (padding_W, padding_W)),
             mode='constant',
             constant_values=0
         )
 
-        X_patch_stack = [] # Shape: ((out_H-1) * (out_w-1), self.kernel_size[0] * self.kernel_size[1])
+        # im2col — each patch becomes one row
+        X_col = []
         for i in range(out_H):
             for j in range(out_W):
-                # stride controls where you START extracting each patch
                 row_start = i * self.stride[0]
                 col_start = j * self.stride[1]
 
                 patch = X_padded[
-                    :,                                             # all channels
-                    row_start : row_start + self.kernel_size[0],   # vertical slice
-                    col_start : col_start + self.kernel_size[1]    # horizontal slice
+                    :,
+                    row_start : row_start + self.kernel_size[0],
+                    col_start : col_start + self.kernel_size[1]
                 ]
-                
-                # Flattening patch & kernels into 1D array
-                patch_tf = np.resize(X.data, (1, patch.shape[0] * patch.shape[1] * patch.shape[2]))
-                X_patch_stack.append(patch_tf)
+                X_col.append(patch.reshape(1, -1))  # (1, in_C * kH * kW)
 
-        kernel_tf = Tensor(np.resize(self.W.data,
-                            (self.out_channels, self.kernel_size[0] * self.kernel_size[1])),
-                            requires_grad=True)
-        X_tf = Tensor(X_patch_stack, requires_grad=True)
-        
-        out = (X_tf @ kernel_tf) + self.b
+        # shape: (out_H * out_W, in_C * kH * kW)
+        X_col = np.vstack(X_col)
+
+        # reshape kernels: (out_channels, in_C * kH * kW)
+        W_col = self.W.data.reshape(self.out_channels, -1)
+
+        # matmul: (out_H*out_W, in_C*kH*kW) @ (in_C*kH*kW, out_channels)
+        out_col = X_col @ W_col.T   # shape: (out_H*out_W, out_channels)
+
+        # reshape to (out_channels, out_H, out_W)
+        out_data = out_col.T.reshape(self.out_channels, out_H, out_W)
+
+        out = Tensor(out_data + self.b.data, requires_grad=X.requires_grad)
+
+        self._state['X_col']    = X_col
+        self._state['X_padded'] = X_padded
+        self._state['W_col']    = W_col
+        self._state['out_H']    = out_H
+        self._state['out_W']    = out_W
+        self._state['padding']  = (padding_H, padding_W)
+
         self._write(SLOT_OUTPUT, out, 'out')
         return out
 
     def _backward(self, grad: Tensor) -> Tensor:
         self._write(SLOT_GRAD_OUT, grad, 'grad_out')
-        grad_X = matmul(grad, self.W.transpose())
+        ...
         self._write(SLOT_GRAD_IN, grad_X, 'grad_in')
         return grad_X
