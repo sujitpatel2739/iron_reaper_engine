@@ -31,9 +31,11 @@ class Tensor:
         for parent, parent_grad in zip(self.parents, grads_to_parents):
             parent.backward(parent_grad)
             
+    @property            
     def detach(self):
         return Tensor(self.data, requires_grad=False)
             
+    @property
     def transpose(self):
         # 1. Forward Pass: Transpose the data
         new_data = self.data.T
