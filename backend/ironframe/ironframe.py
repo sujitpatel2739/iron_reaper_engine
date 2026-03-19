@@ -206,6 +206,15 @@ class Tensor:
         # print("Freezed tensor: ", detached)
         return detached
 
+def toTensor(*args):
+    if len(args) == 1:
+        t = args[0]
+        return t if isinstance(t, Tensor) else Tensor(t, requires_grad=False)
+    else:
+        t = [t if isinstance(t, Tensor) else Tensor(t, requires_grad=False)
+             for t in args]
+        return tuple(t)
+
 def add(t1, t2):
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data + t2.data, requires_grad=requires_grad)    
