@@ -1,6 +1,8 @@
 import numpy as np
 
 class Tensor:
+    __hash__ = None
+    
     def __init__(self, data, requires_grad = False):
         self.grad = None
         self.data = np.array(data)
@@ -8,8 +10,6 @@ class Tensor:
         self.requires_grad = requires_grad
         self.backward_fn = None
         self.freezed = False
-
-        __hash__ = False
         
     def backward(self, grad=None):
         if not self.requires_grad and not self.freezed:
@@ -60,7 +60,7 @@ class Tensor:
     def permute(self, *args):
         # If < 2 dimensions passed.
         if len(args) < 2:
-            raise Exception('Tensor.permute requried minimum 2 dimensions.')
+            raise Exception('Error: Tensor.permute requries minimum 2 dimensions.')
         
         axes = args
         out = Tensor(np.transpose(self.data, axes), requires_grad=self.requires_grad)
@@ -201,21 +201,24 @@ class Tensor:
         return self
     
     def freeze(self):
-        detached = self.detach()
+        detached = self.detach
         detached.freezed = True
         # print("Freezed tensor: ", detached)
         return detached
 
 def toTensor(*args):
-    if len(args) == 1:
+    if len(args) < 1:
+        raise Exception('Error: toTensor() requries minimum 1 argument')
+    elif len(args) == 1:
         t = args[0]
         return t if isinstance(t, Tensor) else Tensor(t, requires_grad=False)
     else:
         t = [t if isinstance(t, Tensor) else Tensor(t, requires_grad=False)
              for t in args]
         return tuple(t)
-
+    
 def add(t1, t2):
+    t1, t2 = toTensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data + t2.data, requires_grad=requires_grad)    
     if requires_grad:
@@ -226,6 +229,7 @@ def add(t1, t2):
     return out
 
 def sub(t1, t2):
+    t1, t2 = toTensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data - t2.data, requires_grad=requires_grad)
     if requires_grad:
@@ -236,6 +240,7 @@ def sub(t1, t2):
     return out
 
 def mul(t1, t2):
+    t1, t2 = toTensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data * t2.data, requires_grad=requires_grad)
     if requires_grad:
@@ -249,6 +254,7 @@ def mul(t1, t2):
     return out
 
 def div(t1, t2):
+    t1, t2 = toTensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data / t2.data, requires_grad=requires_grad)
     if requires_grad:
@@ -262,6 +268,7 @@ def div(t1, t2):
     return out
 
 def sum(t, axis = 0, keepdims=True):
+    t = toTensor(t)
     out = Tensor(np.sum(t.data, axis=axis, keepdims=keepdims), requires_grad=t.requires_grad)
     if t.requires_grad:
         out.parents = [t]
@@ -271,7 +278,8 @@ def sum(t, axis = 0, keepdims=True):
     return out
 
 def mean(t, axis = 0, keepdims=True):
-    n = t.data.size
+    t = toTensor(t)
+    n = t.data.shape[axis] if axis is not None else t.data.size
     out = Tensor(np.sum(t.data, axis=axis, keepdims=keepdims)/n, requires_grad=t.requires_grad)
     if t.requires_grad:
         out.parents = [t]
@@ -281,6 +289,7 @@ def mean(t, axis = 0, keepdims=True):
     return out
 
 def matmul(t1, t2):
+    t1, t2 = toTensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(np.matmul(t1.data, t2.data), requires_grad=requires_grad)
     if requires_grad:
@@ -291,6 +300,7 @@ def matmul(t1, t2):
     return out
 
 def sqrt(t):
+    t = toTensor(t)
     out = Tensor(np.sqrt(t.data), requires_grad=t.requires_grad)
     if t.requires_grad:
         out.parents = [t]
