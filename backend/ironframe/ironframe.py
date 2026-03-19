@@ -57,6 +57,28 @@ class Tensor:
             
         return out
 
+    
+    def permute(self, *args):
+        # If < 2 dimensions passed.
+        if len(args) < 2:
+            raise Exception('Tensor.permute requried minimum 2 dimensions.')
+        else:
+            axes = args
+    
+        out = Tensor(np.transpose(self.data, axes), requires_grad=self.requires_grad)
+    
+        if self.requires_grad:
+            out.parents = [self]
+    
+            def _backward(grad):
+                # Reverse the permutation to send grad back to original axis order
+                reverse_axes = np.argsort(axes)
+                return [np.transpose(grad, reverse_axes)]
+    
+            out.backward_fn = _backward
+    
+        return out
+
     @property
     def shape(self):
         return self.data.shape
