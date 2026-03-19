@@ -54,9 +54,8 @@ class Tensor:
                 return [grad.T]
             
             out.backward_fn = _backward
-            
+        
         return out
-
     
     def permute(self, *args):
         # If < 2 dimensions passed.
@@ -78,7 +77,29 @@ class Tensor:
             out.backward_fn = _backward
     
         return out
-
+    
+    def reshape(self, *args):
+        # same flexible calling style as transpose
+        if len(args) == 1 and isinstance(args[0], (tuple, list)):
+            new_shape = tuple(args[0])
+        else:
+            new_shape = args
+    
+        original_shape = self.data.shape  # save before reshaping
+    
+        out = Tensor(self.data.reshape(new_shape), requires_grad=self.requires_grad)
+    
+        if self.requires_grad:
+            out.parents = [self]
+    
+            def _backward(grad):
+                # grad arrives in new_shape, send it back in original_shape
+                return [grad.reshape(original_shape)]
+    
+            out.backward_fn = _backward
+    
+        return out
+        
     @property
     def shape(self):
         return self.data.shape
