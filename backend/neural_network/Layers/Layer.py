@@ -339,8 +339,8 @@ class Conv2d(Layer):
 
         # reshape to (out_channels, out_H, out_W)
         out_data = out_col.T.reshape(self.out_channels, out_H, out_W)
-
-        out = Tensor(out_data + self.b.data, requires_grad=X.requires_grad)
+        out = Tensor(out_data, requires_grad=X.requires_grad)
+        out = out + self.b
 
         self._state['X_col']    = X_col
         self._state['X_padded'] = X_padded
