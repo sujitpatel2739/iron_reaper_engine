@@ -100,50 +100,34 @@ class Tensor:
         return self.data.shape
     
     def __add__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
         return add(self, other) 
     
     def __radd__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
         return add(other, self)
        
     def __sub__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
         return sub(self, other)
     
     def __rsub__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
         return sub(other, self)
     
     def __mul__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
         return mul(self, other)
 
     def __rmul__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
         return mul(other, self)
     
     def __truediv__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
         return div(self, other)
     
     def __rtruediv__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
         return div(other, self)
     
     def __matmul__(self, other):
         return matmul(self, other)
     
     def __neg__(self):
-        return mul(self, Tensor(-1.0, requires_grad=False))
+        return self * -1
     
     def __pow__(self, power):
         if not isinstance(power, int) or power < 0:
@@ -158,45 +142,37 @@ class Tensor:
         return result
     
     def __lt__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
+        other = toTensor(other)
         return Tensor(self.data < other.data, requires_grad=False)
 
     def __eq__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
+        other = toTensor(other)
         return Tensor(self.data == other.data, requires_grad=False)
 
     def __ge__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
+        other = toTensor(other)
         return Tensor(self.data >= other.data, requires_grad=False)
 
     def __le__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
+        other = toTensor(other)
         return Tensor(self.data <= other.data, requires_grad=False)
 
     def __ne__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
+        other = toTensor(other)
         return Tensor(self.data != other.data, requires_grad=False)
 
     def __iadd__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
+        other = toTensor(other)
         self.data = self.data + other.data
         return self
 
     def __isub__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
+        other = toTensor(other)
         self.data = self.data - other.data
         return self
 
     def __imul__(self, other):
-        if not isinstance(other, Tensor):
-            other = Tensor(other, requires_grad=False)
+        other = toTensor(other)
         self.data = self.data * other.data
         return self
     
