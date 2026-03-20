@@ -201,9 +201,16 @@ def _totensor(*args):
              for t in args]
         return tuple(t)
     
-def _revbroadcast(grad_t, target_shape):
-    # while(grad_t.ndim > )
-
+def _revbroadcast(grad_t, target_t):
+    while(grad_t.ndim > target_t.ndim):
+        grad_t = grad_t.sum(axis = 0)
+        
+    for dim, (g_dim, t_dim) in enumerate(zip(grad_t.shape, target_t.shape)):
+        if t_dim == 1 and g_dim != 1:
+            grad_t = grad_t.sum(axis = dim, keep_dims = True)
+        
+    return grad_t
+            
 def add(t1, t2):
     t1, t2 = _totensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
