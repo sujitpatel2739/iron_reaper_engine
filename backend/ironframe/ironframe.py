@@ -99,6 +99,10 @@ class Tensor:
     def shape(self):
         return self.data.shape
     
+    @property
+    def ndim(self):
+        return len(self.shape)
+    
     def __add__(self, other):
         return add(self, other) 
     
@@ -142,41 +146,41 @@ class Tensor:
         return result
     
     def __lt__(self, other):
-        other = toTensor(other)
+        other = _totensor(other)
         return Tensor(self.data < other.data, requires_grad=False)
 
     def __eq__(self, other):
-        other = toTensor(other)
+        other = _totensor(other)
         return Tensor(self.data == other.data, requires_grad=False)
 
     def __ge__(self, other):
-        other = toTensor(other)
+        other = _totensor(other)
         return Tensor(self.data >= other.data, requires_grad=False)
 
     def __gt__(self, other):
-        other = toTensor(other)
+        other = _totensor(other)
         return Tensor(self.data > other.data, requires_grad=False)
     
     def __le__(self, other):
-        other = toTensor(other)
+        other = _totensor(other)
         return Tensor(self.data <= other.data, requires_grad=False)
 
     def __ne__(self, other):
-        other = toTensor(other)
+        other = _totensor(other)
         return Tensor(self.data != other.data, requires_grad=False)
 
     def __iadd__(self, other):
-        other = toTensor(other)
+        other = _totensor(other)
         self.data = self.data + other.data
         return self
 
     def __isub__(self, other):
-        other = toTensor(other)
+        other = _totensor(other)
         self.data = self.data - other.data
         return self
 
     def __imul__(self, other):
-        other = toTensor(other)
+        other = _totensor(other)
         self.data = self.data * other.data
         return self
     
@@ -186,9 +190,9 @@ class Tensor:
         # print("Freezed tensor: ", detached)
         return detached
 
-def toTensor(*args):
+def _totensor(*args):
     if len(args) < 1:
-        raise Exception('Error: toTensor() requries minimum 1 argument')
+        raise Exception('Error: _totensor() requries minimum 1 argument')
     elif len(args) == 1:
         t = args[0]
         return t if isinstance(t, Tensor) else Tensor(t, requires_grad=False)
@@ -197,8 +201,11 @@ def toTensor(*args):
              for t in args]
         return tuple(t)
     
+def _revbroadcast(grad_t, target_shape):
+    # while(grad_t.ndim > )
+
 def add(t1, t2):
-    t1, t2 = toTensor(t1, t2)
+    t1, t2 = _totensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data + t2.data, requires_grad=requires_grad)    
     if requires_grad:
@@ -209,7 +216,7 @@ def add(t1, t2):
     return out
 
 def sub(t1, t2):
-    t1, t2 = toTensor(t1, t2)
+    t1, t2 = _totensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data - t2.data, requires_grad=requires_grad)
     if requires_grad:
@@ -220,7 +227,7 @@ def sub(t1, t2):
     return out
 
 def mul(t1, t2):
-    t1, t2 = toTensor(t1, t2)
+    t1, t2 = _totensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data * t2.data, requires_grad=requires_grad)
     if requires_grad:
@@ -234,7 +241,7 @@ def mul(t1, t2):
     return out
 
 def div(t1, t2):
-    t1, t2 = toTensor(t1, t2)
+    t1, t2 = _totensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(t1.data / t2.data, requires_grad=requires_grad)
     if requires_grad:
@@ -248,7 +255,7 @@ def div(t1, t2):
     return out
 
 def sum(t, axis = 0, keepdims=True):
-    t = toTensor(t)
+    t = _totensor(t)
     out = Tensor(np.sum(t.data, axis=axis, keepdims=keepdims), requires_grad=t.requires_grad)
     if t.requires_grad:
         out.parents = [t]
@@ -258,7 +265,7 @@ def sum(t, axis = 0, keepdims=True):
     return out
 
 def mean(t, axis = 0, keepdims=True):
-    t = toTensor(t)
+    t = _totensor(t)
     n = t.data.shape[axis] if axis is not None else t.data.size
     out = Tensor(np.sum(t.data, axis=axis, keepdims=keepdims)/n, requires_grad=t.requires_grad)
     if t.requires_grad:
@@ -269,7 +276,7 @@ def mean(t, axis = 0, keepdims=True):
     return out
 
 def matmul(t1, t2):
-    t1, t2 = toTensor(t1, t2)
+    t1, t2 = _totensor(t1, t2)
     requires_grad = t1.requires_grad or t2.requires_grad
     out = Tensor(np.matmul(t1.data, t2.data), requires_grad=requires_grad)
     if requires_grad:
@@ -280,7 +287,7 @@ def matmul(t1, t2):
     return out
 
 def sqrt(t):
-    t = toTensor(t)
+    t = _totensor(t)
     out = Tensor(np.sqrt(t.data), requires_grad=t.requires_grad)
     if t.requires_grad:
         out.parents = [t]
