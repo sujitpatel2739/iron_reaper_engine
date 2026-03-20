@@ -18,7 +18,6 @@ import cache.CacheStore as CacheStore
 from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
 from ironframe.ironframe import Tensor, add, mul, matmul, mean, sqrt
 
-
 # ---------------------------------------------------------------------------
 # Base
 # ---------------------------------------------------------------------------
@@ -132,8 +131,7 @@ class Tanh(Layer):
     def _backward(self, grad: Tensor) -> Tensor:
         self._write(SLOT_GRAD_OUT, grad)
         out = self._state['out']
-        grad_X = grad * (1 - np.pow(out.data, 2))
-        grad_X = Tensor(grad_X, requires_grad=grad.requires_grad)
+        grad_X = grad * (1 - (out.data ** 2))
         self._write(SLOT_GRAD_IN, grad_X)
         return grad_X
 
@@ -143,8 +141,7 @@ class Sigmoid(Layer):
         
     def _forward(self, x: Tensor) -> Tensor:
         self._write(SLOT_INPUT, x)
-        self._state['mask'] = x.data > 0
-        out = Tensor(1 / 1 + np.exp(x.data) , requires_grad=x.requires_grad)
+        out = Tensor(1 / (1 + np.exp(-x.data)) , requires_grad=x.requires_grad)
         self._write(SLOT_OUTPUT, out)
         self._state['out'] = out
         return out
@@ -188,7 +185,6 @@ class Elu(Layer):
         self._state['input'] = x.data
         self._state['mask'] = x.data > 0
         out = Tensor(np.where(self._state['mask'], x.data, self.alpha * (np.exp(x.data) - 1)), requires_grad=x.requires_grad)
-        out = Tensor(out, requires_grad=x.requires_grad)
         self._write(SLOT_OUTPUT, out)
         return out
 
@@ -270,7 +266,6 @@ class LayerNorm(Layer):
         self._write(SLOT_GRAD_IN, grad_X)
         return grad_X
     
-    
 # ---------------------------------------------------------------------------
 # LayerNorm
 # ---------------------------------------------------------------------------
@@ -285,8 +280,8 @@ class Conv2d(Layer):
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
         self.stride = stride if isinstance(stride, tuple) else (stride, stride)
         self.padding = padding
-        std = sqrt(2.0/in_channels)
-        self.W = Tensor(np.random.normal(0, std, (out_channels, in_channels, kernel_size[0], kernel_size[1])), requires_grad=True)
+        std = np.sqrt(2.0/in_channels)
+        self.W = Tensor(np.random.normal(0, std, (out_channels, in_channels, self.kernel_size[0], self.kernel_size[1])), requires_grad=True)
         self.b = Tensor(np.zeros((out_channels, 1, 1)), requires_grad=True)
         self.parameters = {'W': self.W, 'b': self.b}
         
