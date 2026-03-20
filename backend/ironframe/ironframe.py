@@ -218,7 +218,7 @@ def add(t1, t2):
     if requires_grad:
         out.parents = [t1, t2]
         def backward_fn(grad):
-            return [grad, grad]
+            return [_revbroadcast(grad, t1), _revbroadcast(grad, t2)]
         out.backward_fn = backward_fn
     return out
 
@@ -229,7 +229,7 @@ def sub(t1, t2):
     if requires_grad:
         out.parents = [t1, t2]
         def backward_fn(grad):
-            return [grad, -grad]
+            return [_revbroadcast(grad, t1), -_revbroadcast(grad, t2)]
         out.backward_fn = backward_fn
     return out
 
@@ -240,10 +240,9 @@ def mul(t1, t2):
     if requires_grad:
         out.parents = [t1, t2]
         def backward_fn(grad):
-            return [
-                grad * t2.data,
-                grad * t1.data
-            ]
+            grad_t1 = _revbroadcast(grad * t2.data, t1)  # scale by t2, then _unrevbroadcast to t1's shape
+            grad_t2 = _revbroadcast(grad * t1.data, t2)  # scale by t1, then _unrevbroadcast to t2's shape
+            return [grad_t1, grad_t2]
         out.backward_fn = backward_fn
     return out
 
