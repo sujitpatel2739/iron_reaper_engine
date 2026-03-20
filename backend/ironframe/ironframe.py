@@ -1,356 +1,290 @@
-"""
-Layer.py
---------
-Base Layer and primitive layer implementations.
-
-CacheStore is imported as a module — no instance, no injection.
-Layers call CacheStore.write() / CacheStore.read_required() directly.
-
-_state remains a private instance dict on each layer — it holds
-internal working memory (mask, X_hat, std) that only that layer's
-own backward ever reads. It is never accessed from outside.
-"""
-
 import numpy as np
-from types import MappingProxyType
 
-import cache.CacheStore as CacheStore
-from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
-from ironframe.ironframe import Tensor, add, mul, matmul, mean, sqrt
+class Tensor:
+    __hash__ = None
+    
+    def __init__(self, data, requires_grad = False):
+        self.grad = None
+        self.data = np.array(data)
+        self.parents = []
+        self.requires_grad = requires_grad
+        self.backward_fn = None
+        self.freezed = False
+        
+    def backward(self, grad=None):
+        if not self.requires_grad and not self.freezed:
+            return
 
-# ---------------------------------------------------------------------------
-# Base
-# ---------------------------------------------------------------------------
+        if grad is None:
+            grad = np.ones_like(self.data)
 
-class Layer:
-    def __init__(self, layer_id: int, name: str = ""):
-        self.id         = layer_id
-        self.name       = f"layer_{layer_id}" if not name else name
-        self.type       = type(self).__name__.lower()
-        self.parameters = {}
-        self._state     = {}   # private working memory for this layer's backward
-        self._detached = False
-        object.__setattr__(self, '_detached', False)
+        if self.grad is None:
+            self.grad = grad
+        else:
+            self.grad = self.grad + grad
 
-    def __call__(self, x: Tensor) -> Tensor:
-        if self._detached:
-            return x
-        return self._forward(x)
+        if self.backward_fn is None:
+            return
 
-    def backward(self, grad: Tensor) -> Tensor:
-        if self._detached:
-            return grad
-        return self._backward(grad)
+        grads_to_parents = self.backward_fn(grad)
 
-    def _forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError
-
-    def _backward(self, grad: Tensor) -> Tensor:
-        raise NotImplementedError
-
-    def __setattr__(self, name, value):
-        if getattr(self, '_detached', False):
-            raise AttributeError(
-                f"Layer '{self.name}' is detached (immutable). "
-                f"Cannot set '{name}'."
-            )
-        super().__setattr__(name, value)
-
+        for parent, parent_grad in zip(self.parents, grads_to_parents):
+            parent.backward(parent_grad)
+            
+    @property            
     def detach(self):
-        if hasattr(self, 'parameters'):
-            object.__setattr__(self, 'parameters', MappingProxyType(self.parameters))
-        object.__setattr__(self, '_detached', True)
+        return Tensor(self.data, requires_grad=False)
+            
+    @property
+    def transpose(self):
+        # 1. Forward Pass: Transpose the data
+        new_data = self.data.T
+        
+        # 2. Create the output tensor
+        out = Tensor(new_data, requires_grad=self.requires_grad)
+        
+        if self.requires_grad:
+            # 3. Build the graph
+            out.parents = [self]
+            
+            # 4. Define the backward function
+            # The gradient flowing back to the input is just the 
+            # transpose of the gradient flowing into the output.
+            def _backward(grad):
+                return [grad.T]
+            
+            out.backward_fn = _backward
+        
+        return out
+    
+    def permute(self, *args):
+        # If < 2 dimensions passed.
+        if len(args) < 2:
+            raise Exception('Error: Tensor.permute requries minimum 2 dimensions.')
+        
+        axes = args
+        out = Tensor(np.transpose(self.data, axes), requires_grad=self.requires_grad)
+    
+        if self.requires_grad:
+            out.parents = [self]
+    
+            def _backward(grad):
+                reverse_axes = np.argsort(axes)
+                return [np.transpose(grad, reverse_axes)]
+    
+            out.backward_fn = _backward
+    
+        return out
+    
+    def reshape(self, *args):
+        # same flexible calling style as transpose
+        if len(args) == 1 and isinstance(args[0], (tuple, list)):
+            new_shape = tuple(args[0])
+        else:
+            new_shape = args
+
+        original_shape = self.data.shape
+
+        out = Tensor(self.data.reshape(new_shape), requires_grad=self.requires_grad)
+
+        if self.requires_grad:
+            out.parents = [self]
+            def _backward(grad):
+                return [grad.reshape(original_shape)]
+            out.backward_fn = _backward
+            
+        return out
+        
+    @property
+    def shape(self):
+        return self.data.shape
+    
+    def __add__(self, other):
+        return add(self, other) 
+    
+    def __radd__(self, other):
+        return add(other, self)
+       
+    def __sub__(self, other):
+        return sub(self, other)
+    
+    def __rsub__(self, other):
+        return sub(other, self)
+    
+    def __mul__(self, other):
+        return mul(self, other)
+
+    def __rmul__(self, other):
+        return mul(other, self)
+    
+    def __truediv__(self, other):
+        return div(self, other)
+    
+    def __rtruediv__(self, other):
+        return div(other, self)
+    
+    def __matmul__(self, other):
+        return matmul(self, other)
+    
+    def __neg__(self):
+        return self * -1
+    
+    def __pow__(self, power):
+        if not isinstance(power, int) or power < 0:
+            raise ValueError("Power must be a non-negative integer for now.")
+        if power == 0:
+            return Tensor(np.ones_like(self.data), requires_grad=self.requires_grad)
+        if power == 1:
+            return self
+        result = self
+        for _ in range(power - 1):
+            result = result * self
+        return result
+    
+    def __lt__(self, other):
+        other = toTensor(other)
+        return Tensor(self.data < other.data, requires_grad=False)
+
+    def __eq__(self, other):
+        other = toTensor(other)
+        return Tensor(self.data == other.data, requires_grad=False)
+
+    def __ge__(self, other):
+        other = toTensor(other)
+        return Tensor(self.data >= other.data, requires_grad=False)
+
+    def __gt__(self, other):
+        other = toTensor(other)
+        return Tensor(self.data > other.data, requires_grad=False)
+    
+    def __le__(self, other):
+        other = toTensor(other)
+        return Tensor(self.data <= other.data, requires_grad=False)
+
+    def __ne__(self, other):
+        other = toTensor(other)
+        return Tensor(self.data != other.data, requires_grad=False)
+
+    def __iadd__(self, other):
+        other = toTensor(other)
+        self.data = self.data + other.data
         return self
 
-    # -- CacheStore helpers --------------------------------------------------
+    def __isub__(self, other):
+        other = toTensor(other)
+        self.data = self.data - other.data
+        return self
 
-    def _write(self, slot: str, tensor: Tensor) -> None:
-        CacheStore.write(self.id, slot, tensor)
-
-    def _read(self, slot: str) -> Tensor:
-        return CacheStore.read_required(self.id, slot)
-
-# ---------------------------------------------------------------------------
-# Linear
-# ---------------------------------------------------------------------------
-
-class Linear(Layer):
-    def __init__(self, layer_id: int, in_features: int, out_features: int, name: str = ""):
-        super().__init__(layer_id, name)
-        std      = np.sqrt(2.0 / in_features)
-        self.W   = Tensor(np.random.normal(0, std, (in_features, out_features)), requires_grad=True)
-        self.b   = Tensor(np.zeros((1, out_features)), requires_grad=True)
-        self.parameters = {'W': self.W, 'b': self.b}
-
-    def _forward(self, X: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, X)
-        out = add(matmul(X, self.W), self.b)
-        self._write(SLOT_OUTPUT, out)
-        return out
-
-    def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
-        grad_X = matmul(grad, self.W.transpose)
-        self._write(SLOT_GRAD_IN, grad_X)
-        return grad_X
-
-
-# ---------------------------------------------------------------------------
-# Activation Layers
-# ---------------------------------------------------------------------------
-
-class Relu(Layer):
-    def __init__(self, layer_id: int, name: str = ""):
-        super().__init__(layer_id, name)
-
-    def _forward(self, x: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, x)
-        self._state['mask'] = x.data > 0
-        out = Tensor(np.maximum(0, x.data), requires_grad=x.requires_grad)
-        self._write(SLOT_OUTPUT, out)
-        return out
-
-    def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
-        grad_X = Tensor(grad.data * self._state['mask'], requires_grad=grad.requires_grad)
-        self._write(SLOT_GRAD_IN, grad_X)
-        return grad_X
-
-class Tanh(Layer):
-    def __init__(self, layer_id: int, name: str = ""):
-        super().__init__(layer_id, name)
-
-    def _forward(self, x: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, x)
-        out = (np.exp(x.data) - np.exp(-x.data)) / (np.exp(x.data) + np.exp(-x.data))
-        out = Tensor(out, requires_grad=x.requires_grad)
-        self._write(SLOT_OUTPUT, out)
-        self._state['out'] = out
-        return out
-
-    def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
-        out = self._state['out']
-        grad_X = grad * (1 - (out.data ** 2))
-        self._write(SLOT_GRAD_IN, grad_X)
-        return grad_X
-
-class Sigmoid(Layer):
-    def __init__(self, layer_id: int, name: str = ""):
-        super().__init__(layer_id, name)
-        
-    def _forward(self, x: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, x)
-        out = Tensor(1 / (1 + np.exp(-x.data)) , requires_grad=x.requires_grad)
-        self._write(SLOT_OUTPUT, out)
-        self._state['out'] = out
-        return out
-
-    def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
-        out = self._state['out']
-        grad_X = grad * out * (1 - out)
-        self._write(SLOT_GRAD_IN, grad_X)
-        return grad_X
-
-class LeakyRelu(Layer):
-    def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
-        super().__init__(layer_id, name)
-        self.alpha = alpha
-
-    def _forward(self, x: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, x)
-        self._state['mask'] = x.data > 0
-        out = Tensor(np.where(self._state['mask'], x.data, x.data * self.alpha), requires_grad=x.requires_grad)
-        self._write(SLOT_OUTPUT, out)
-        return out
-
-    def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
-        mask = self._state['mask']
-        grad_X = Tensor(
-            np.where(mask, grad.data, grad.data * self.alpha),
-            requires_grad=grad.requires_grad
-        )
-        self._write(SLOT_GRAD_IN, grad_X)
-        return grad_X
+    def __imul__(self, other):
+        other = toTensor(other)
+        self.data = self.data * other.data
+        return self
     
-class Elu(Layer):
-    def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
-        super().__init__(layer_id, name)
-        self.alpha = alpha
+    def freeze(self):
+        detached = self.detach
+        detached.freezed = True
+        # print("Freezed tensor: ", detached)
+        return detached
 
-    def _forward(self, x: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, x)
-        self._state['input'] = x.data
-        self._state['mask'] = x.data > 0
-        out = Tensor(np.where(self._state['mask'], x.data, self.alpha * (np.exp(x.data) - 1)), requires_grad=x.requires_grad)
-        self._write(SLOT_OUTPUT, out)
-        return out
-
-    def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
-        x = self._state['input']
-        mask = self._state['mask']
-        grad_X = Tensor(
-            np.where(mask, grad.data, grad.data * self.alpha * np.exp(x)),
-            requires_grad=grad.requires_grad
-        )
-        self._write(SLOT_GRAD_IN, grad_X)
-        return grad_X
-
-# class Gelu(Layer):
-#     def __init__(self, layer_id: int, name: str = ""):
-#         super().__init__(layer_id, name)
-        
-#     def _forward(self, x: Tensor) -> Tensor:
-#         self._write(SLOT_INPUT, x)
-#         self._state['mask'] = x.data > 0
-#         out = Tensor(1 / 1 + np.exp(x.data) , requires_grad=x.requires_grad)
-#         self._write(SLOT_OUTPUT, out)
-#         return out
-
-#     def _backward(self, grad: Tensor) -> Tensor:
-#         self._write(SLOT_GRAD_OUT, grad)
-#         out = self._read(SLOT_OUTPUT, 'out')
-#         grad_X = grad * out * (1 - out)
-#         self._write(SLOT_GRAD_IN, grad_X)
-#         return grad_X
+def toTensor(*args):
+    if len(args) < 1:
+        raise Exception('Error: toTensor() requries minimum 1 argument')
+    elif len(args) == 1:
+        t = args[0]
+        return t if isinstance(t, Tensor) else Tensor(t, requires_grad=False)
+    else:
+        t = [t if isinstance(t, Tensor) else Tensor(t, requires_grad=False)
+             for t in args]
+        return tuple(t)
     
-# ---------------------------------------------------------------------------
-# LayerNorm
-# ---------------------------------------------------------------------------
+def add(t1, t2):
+    t1, t2 = toTensor(t1, t2)
+    requires_grad = t1.requires_grad or t2.requires_grad
+    out = Tensor(t1.data + t2.data, requires_grad=requires_grad)    
+    if requires_grad:
+        out.parents = [t1, t2]
+        def backward_fn(grad):
+            return [grad, grad]
+        out.backward_fn = backward_fn
+    return out
 
-class LayerNorm(Layer):
-    def __init__(self, layer_id: int, in_features: int, eps: float = 1e-5, name: str = ""):
-        super().__init__(layer_id, name)
-        self.eps   = eps
-        self.gamma = Tensor(np.ones((1, in_features)),  requires_grad=True)
-        self.beta  = Tensor(np.zeros((1, in_features)), requires_grad=True)
-        self.parameters = {'gamma': self.gamma, 'beta': self.beta}
+def sub(t1, t2):
+    t1, t2 = toTensor(t1, t2)
+    requires_grad = t1.requires_grad or t2.requires_grad
+    out = Tensor(t1.data - t2.data, requires_grad=requires_grad)
+    if requires_grad:
+        out.parents = [t1, t2]
+        def backward_fn(grad):
+            return [grad, -grad]
+        out.backward_fn = backward_fn
+    return out
 
-    def _forward(self, X: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, X)
+def mul(t1, t2):
+    t1, t2 = toTensor(t1, t2)
+    requires_grad = t1.requires_grad or t2.requires_grad
+    out = Tensor(t1.data * t2.data, requires_grad=requires_grad)
+    if requires_grad:
+        out.parents = [t1, t2]
+        def backward_fn(grad):
+            return [
+                grad * t2.data,
+                grad * t1.data
+            ]
+        out.backward_fn = backward_fn
+    return out
 
-        mu    = mean(X, axis=-1, keepdims=True)
-        X_mu  = X - mu
-        var   = mean(X_mu * X_mu, axis=-1, keepdims=True)
-        eps   = Tensor(np.ones_like(var.data) * self.eps, requires_grad=False)
-        std   = sqrt(var + eps)
-        X_hat = X_mu / std
-        out   = (self.gamma * X_hat) + self.beta
+def div(t1, t2):
+    t1, t2 = toTensor(t1, t2)
+    requires_grad = t1.requires_grad or t2.requires_grad
+    out = Tensor(t1.data / t2.data, requires_grad=requires_grad)
+    if requires_grad:
+        out.parents = [t1, t2]
+        def backward_fn(grad):
+            return [
+                grad / t2.data,
+                -grad * t1.data / (t2.data ** 2)
+            ]
+        out.backward_fn = backward_fn
+    return out
 
-        self._state['X_hat'] = X_hat   # private — only _backward reads this
-        self._state['std']   = std
+def sum(t, axis = 0, keepdims=True):
+    t = toTensor(t)
+    out = Tensor(np.sum(t.data, axis=axis, keepdims=keepdims), requires_grad=t.requires_grad)
+    if t.requires_grad:
+        out.parents = [t]
+        def backward_fn(grad):
+            return [np.ones_like(t.data) * grad]
+        out.backward_fn = backward_fn
+    return out
 
-        self._write(SLOT_OUTPUT, out)
-        return out
+def mean(t, axis = 0, keepdims=True):
+    t = toTensor(t)
+    n = t.data.shape[axis] if axis is not None else t.data.size
+    out = Tensor(np.sum(t.data, axis=axis, keepdims=keepdims)/n, requires_grad=t.requires_grad)
+    if t.requires_grad:
+        out.parents = [t]
+        def backward_fn(grad):            
+            return [np.ones_like(t.data) * grad/n]
+        out.backward_fn = backward_fn
+    return out
 
-    def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
+def matmul(t1, t2):
+    t1, t2 = toTensor(t1, t2)
+    requires_grad = t1.requires_grad or t2.requires_grad
+    out = Tensor(np.matmul(t1.data, t2.data), requires_grad=requires_grad)
+    if requires_grad:
+        out.parents = [t1, t2]
+        def backward_fn(grad):            
+            return [np.matmul(grad, t2.data.T), np.matmul(t1.data.T, grad)]
+        out.backward_fn = backward_fn
+    return out
 
-        X_hat = self._state['X_hat']
-        std   = self._state['std']
-
-        dg = mean(grad * X_hat, axis=0)
-        db = mean(grad, axis=0)
-        self.gamma.grad = self.gamma.grad + dg if self.gamma.grad is not None else dg
-        self.beta.grad  = self.beta.grad  + db if self.beta.grad  is not None else db
-
-        dX_hat = grad * self.gamma
-        term1  = dX_hat
-        term2  = mean(dX_hat, axis=-1, keepdims=True)
-        term3  = X_hat * mean(dX_hat * X_hat, axis=-1, keepdims=True)
-        grad_X = ((term1 - term2) - term3) / std
-
-        self._write(SLOT_GRAD_IN, grad_X)
-        return grad_X
-    
-    
-# ---------------------------------------------------------------------------
-# LayerNorm
-# ---------------------------------------------------------------------------
-
-class Conv2d(Layer):
-    def __init__(self, layer_id: int, in_channels: int, out_channels: int,
-                 kernel_size: tuple|int = (3,3), stride: tuple|int = (1,1),
-                 padding:tuple|str = 'same', name: str = ""):
-        super().__init__(layer_id, name)
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
-        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
-        self.padding = padding
-        std = sqrt(2.0/in_channels)
-        self.W = Tensor(np.random.normal(0, std, (out_channels, in_channels, self.kernel_size[0], self.kernel_size[1])), requires_grad=True)
-        self.b = Tensor(np.zeros((out_channels, 1, 1)), requires_grad=True)
-        self.parameters = {'W': self.W, 'b': self.b}
-        
-
-    def _forward(self, X: Tensor) -> Tensor:
-        self._write(SLOT_INPUT, X)
-
-        if isinstance(self.padding, tuple):
-            padding_H, padding_W = self.padding
-        elif self.padding == 'same':
-            padding_H = (self.kernel_size[0] - 1) // 2
-            padding_W = (self.kernel_size[1] - 1) // 2
-        else:
-            raise Exception('Error: Unknown padding type!')
-
-        # X shape: (in_channels, H, W) — no batch dim
-        in_C, in_H, in_W = X.shape
-
-        out_H = (in_H - self.kernel_size[0] + 2 * padding_H) // self.stride[0] + 1
-        out_W = (in_W - self.kernel_size[1] + 2 * padding_W) // self.stride[1] + 1
-
-        # pad the raw numpy array
-        X_padded = np.pad(
-            X.data,
-            ((0, 0), (padding_H, padding_H), (padding_W, padding_W)),
-            mode='constant',
-            constant_values=0
-        )
-
-        # im2col — each patch becomes one row
-        X_tf = []
-        for i in range(out_H):
-            for j in range(out_W):
-                row_start = i * self.stride[0]
-                col_start = j * self.stride[1]
-
-                patch = X_padded[
-                    :,
-                    row_start : row_start + self.kernel_size[0],
-                    col_start : col_start + self.kernel_size[1]
-                ]
-                X_tf.append(patch.reshape(1, -1))  # (1, in_C * kH * kW)
-
-        # shape: (out_H * out_W, in_C * kH * kW)
-        X_tf = np.vstack(X_tf)
-
-        # reshape kernels: (out_channels, in_C * kH * kW)
-        W_tf = self.W.reshape(self.out_channels, -1)
-
-        # matmul: (out_H*out_W, in_C*kH*kW) @ (in_C*kH*kW, out_channels)
-        out_tf = X_tf @ W_tf.transpose  # shape: (out_H*out_W, out_channels)
-
-        # reshape to (out_channels, out_H, out_W)
-        out = out_tf.transpose.reshape(self.out_channels, out_H, out_W)
-        out = out + self.b
-
-        self._state['X_tf']    = X_tf
-        self._state['X_padded'] = X_padded
-        self._state['W_tf']    = W_tf
-        self._state['out_H']    = out_H
-        self._state['out_W']    = out_W
-        self._state['padding']  = (padding_H, padding_W)
-
-        self._write(SLOT_OUTPUT, out)
-        return out
-
-    def _backward(self, grad: Tensor) -> Tensor:
-        self._write(SLOT_GRAD_OUT, grad)
-        ...
-        self._write(SLOT_GRAD_IN, grad_X)
-        return grad_X
+def sqrt(t):
+    t = toTensor(t)
+    out = Tensor(np.sqrt(t.data), requires_grad=t.requires_grad)
+    if t.requires_grad:
+        out.parents = [t]
+        def backward_fn(grad):            
+            return [grad / (2 * np.sqrt(t.data))]
+        out.backward_fn = backward_fn
+    return out
