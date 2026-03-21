@@ -68,55 +68,59 @@ class Condition:
     def __repr__(self):
         return f"Condition(name='{self.name}')"
 
-# ---------------------------------------------------------------------------
-# Module-level state
-# ---------------------------------------------------------------------------
+# Built-in names — used by is_builtin() and unregister()
+_BUILTIN_NAMES: frozenset = frozenset((
+    "greater_than_zero",
+    "less_than_zero",
+    "greater_equal_zero",
+    "less_equal_zero",
+    "equal_zero",
+    "not_equal_zero",
+    "greater_than_one",
+    "less_than_one",
+    "greater_than_half",
+    "less_than_half",
+    "in_unit_range",
+    "above_mean",
+    "below_mean",
+    "above_median",
+    "below_median",
+    "large_magnitude",
+    "small_magnitude",
+    "is_finite",
+    "is_nan",
+    "is_inf"
+))
 
-_registry: dict[str, Condition] = {}
-
-# ---------------------------------------------------------------------------
-# Built-in conditions
-# ---------------------------------------------------------------------------
-# All built-ins operate on raw numpy arrays (x is np.ndarray).
-# They return a boolean np.ndarray of the same shape — elementwise masks.
-# ---------------------------------------------------------------------------
-
-def _register_builtins() -> None:
-
+_registry = {
     # -- Sign conditions -----------------------------------------------------
-    register("greater_than_zero",    lambda x: x > 0)
-    register("less_than_zero",       lambda x: x < 0)
-    register("greater_equal_zero",   lambda x: x >= 0)
-    register("less_equal_zero",      lambda x: x <= 0)
-    register("equal_zero",           lambda x: x == 0)
-    register("not_equal_zero",       lambda x: x != 0)
+    "greater_than_zero":    lambda x: x > 0,
+    "less_than_zero":       lambda x: x < 0,
+    "greater_equal_zero":   lambda x: x >= 0,
+    "less_equal_zero":      lambda x: x <= 0,
+    "equal_zero":           lambda x: x == 0,
+    "not_equal_zero":       lambda x: x != 0,
 
     # -- Threshold conditions ------------------------------------------------
-    register("greater_than_one",     lambda x: x > 1)
-    register("less_than_one",        lambda x: x < 1)
-    register("greater_than_half",    lambda x: x > 0.5)
-    register("less_than_half",       lambda x: x < 0.5)
-    register("in_unit_range",        lambda x: (x >= 0) & (x <= 1))
+    "greater_than_one":     lambda x: x > 1,
+    "less_than_one":        lambda x: x < 1,
+    "greater_than_half":    lambda x: x > 0.5,
+    "less_than_half":       lambda x: x < 0.5,
+    "in_unit_range":        lambda x: (x >= 0) & (x <= 1),
 
     # -- Statistical conditions (whole-tensor, broadcast to shape) -----------
-    register("above_mean",           lambda x: x > x.mean())
-    register("below_mean",           lambda x: x < x.mean())
-    register("above_median",         lambda x: x > np.median(x))
-    register("below_median",         lambda x: x < np.median(x))
+    "above_mean":           lambda x: x > x.mean(),
+    "below_mean":           lambda x: x < x.mean(),
+    "above_median":         lambda x: x > np.median(x),
+    "below_median":         lambda x: x < np.median(x),
 
     # -- Magnitude conditions ------------------------------------------------
-    register("large_magnitude",      lambda x: np.abs(x) > 1)
-    register("small_magnitude",      lambda x: np.abs(x) <= 1)
-    register("is_finite",            lambda x: np.isfinite(x))
-    register("is_nan",               lambda x: np.isnan(x))
-    register("is_inf",               lambda x: np.isinf(x))
-
-
-# Run at module load — these names are locked in as built-ins
-_register_builtins()
-
-# Snapshot of built-in names — used by is_builtin() and unregister()
-_BUILTIN_NAMES: frozenset = frozenset(_registry.keys())
+    "large_magnitude":      lambda x: np.abs(x) > 1,
+    "small_magnitude":      lambda x: np.abs(x) <= 1,
+    "is_finite":            lambda x: np.isfinite(x),
+    "is_nan":               lambda x: np.isnan(x),
+    "is_inf":               lambda x: np.isinf(x),
+}
 
 # ---------------------------------------------------------------------------
 # Write / Read
@@ -188,7 +192,6 @@ def get(name: str) -> Condition:
 #     register(name, fn)
 #     return get(name)
 
-
 def from_name(name: str) -> Condition:
     """
     Alias for get(). More readable at call sites that are purely loading.
@@ -199,7 +202,6 @@ def from_name(name: str) -> Condition:
     """
     return get(name)
 
-
 # ---------------------------------------------------------------------------
 # Inspection
 # ---------------------------------------------------------------------------
@@ -208,16 +210,13 @@ def list_all() -> List[str]:
     """Return all registered condition names, sorted."""
     return sorted(_registry.keys())
 
-
 def has(name: str) -> bool:
     """Return True if a condition with this name is registered."""
     return name in _registry
 
-
 def is_builtin(name: str) -> bool:
     """Return True if name is a built-in condition (not user-registered)."""
     return name in _BUILTIN_NAMES
-
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -251,7 +250,6 @@ def clear_user_conditions() -> None:
     for name in list(_registry.keys()):
         if name not in _BUILTIN_NAMES:
             del _registry[name]
-
 
 # ---------------------------------------------------------------------------
 # Debug
