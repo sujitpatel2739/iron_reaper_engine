@@ -312,3 +312,16 @@ def neg(t):
             return [_totensor(-grad.data)]
         out.backward_fn = backward_fn
     return out
+
+def Split(t:Tensor, n_splits:int, axis:int = 0):
+    splits = []
+    axis_size = t.shape[axis]
+    max_split_size = round(axis_size / n_splits)
+    start = 0
+    end = start + max_split_size
+    for i in range(n_splits):
+        splits.append(t.data[start:end])
+        start = min(start+end, axis_size)
+        end = min(end+max_split_size, axis_size)
+    return _totensor(splits)
+    
