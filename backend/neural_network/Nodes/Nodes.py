@@ -138,15 +138,20 @@ class SqNode(Node):
     dL/dt = grad * 2 * t
     """
 
+    def __init__(self, node_id: int, name: str = ""):
+        super().__init__(node_id, name)
+
     def _forward(self, *inputs: Tensor) -> Tensor:
         self._require_n_inputs(inputs, 1)
-        t = inputs[0]
-        return self._wrap(t.data ** 2, t.requires_grad)
+        t   = inputs[0]
+        out = t ** 2
+        self._state['input'] = t
+        self._state['out']   = out
+        return out
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
-        t = self._inputs[0]
-        return [self._wrap(grad.data * 2.0 * t.data, t.requires_grad)]
-
+        out = self._state['out']
+        return out.backward(grad)
 
 # ---------------------------------------------------------------------------
 # Unary utility nodes
