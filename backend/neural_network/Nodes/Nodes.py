@@ -1,7 +1,9 @@
 from neural_network.Nodes.Node import Node
 import numpy as np
-from typing import List, Optional
+from typing import Callable, List, Optional, Any
 from ironframe.ironframe import Tensor
+from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
+from backend.registries.ConditionRegistry import Condition
 
 # ---------------------------------------------------------------------------
 # Arithmetic nodes
@@ -342,11 +344,21 @@ class ConditionNode(Node):
     ________
     """
     
-    def __init__(self, condition: str):
+    def __init__(self, name: str, condition: Callable[[Tensor], Tensor],
+                path_true: Any, path_false: Any):
         super().__init__()
+        if not path_true or not path_false:
+            raise Exception("Error: ConditionNode requries exactly 2 paths as outputs.")
+        
+        self.condition = Condition(name, condition)
+        # Example condition: x > 0.5 and x.shape == (1, 2) ...s
+        self.path_true = path_true
+        self.path_false = path_false
 
-    def _forward(self, *inputs: Tensor) -> Tensor:
-        ...
+    def _forward(self, input: Any) -> Optional[Tensor]|None:
+        mask = self.condition(input)
+        self._state['mask'] = mask
+        
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
         ...
