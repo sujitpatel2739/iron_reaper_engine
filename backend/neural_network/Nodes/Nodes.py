@@ -338,27 +338,38 @@ class ConditionNode(Node):
     
     Parameters
     __________
-    condition : str — Condition(s)
+    condition : Callable
     
     Backward
     ________
     """
     
-    def __init__(self, name: str, condition: Callable[[Tensor], Tensor],
-                path_true: Any, path_false: Any):
-        super().__init__()
-        if not path_true or not path_false:
-            raise Exception("Error: ConditionNode requries exactly 2 paths as outputs.")
-        
+    def __init__(self, node_id:int, condition: Callable[[Any], Any],
+                path_true: Any|None, path_false: Any|None, name: str):
+        super().__init__(node_id=node_id)
+        self._require_n_inputs((path_true, path_false), 1)
         self.condition = Condition(name, condition)
-        # Example condition: x > 0.5 and x.shape == (1, 2) ...s
+        # Example condition: x > 0.5 and x.shape == (1, 2) ...
         self.path_true = path_true
         self.path_false = path_false
 
-    def _forward(self, input: Any) -> Optional[Tensor]|None:
-        mask = self.condition(input)
+    def _forward(self, operand: Any, input:Any|None) -> Optional[Any]|None:
+        mask = self.condition(operand)
         self._state['mask'] = mask
-        
+            
+        if isinstance(mask, Tensor|np.ndarray):
+            path_true = self.path_true if self.path_true else lambda x:np.empty_like(input)
+            path_false = self.path_false if self.path_false else lambda x:np.empty_like(input)
+            result = np.where(mask.data, path_true(input), path_false(input))
+        else:
+            path_true = self.path_true if self.path_true else lambda x:None
+            path_false = self.path_false if self.path_false else lambda x:None
+            if mask == True:
+                result = path_true(input)
+            else:
+                result = path_false(input)
+
+        return result
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
         ...
