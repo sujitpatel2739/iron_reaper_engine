@@ -84,13 +84,13 @@ class Linear(Layer):
 
     def _forward(self, X: Tensor) -> Tensor:
         self._write(SLOT_INPUT, X)
-        out = add(matmul(X, self.W), self.b)
+        out = (X @ self.W) + self.b
         self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> Tensor:
         self._write(SLOT_GRAD_OUT, grad)
-        grad_X = matmul(grad, self.W.transpose)
+        grad_X = grad @ self.W.transpose
         self._write(SLOT_GRAD_IN, grad_X)
         return grad_X
 
