@@ -37,7 +37,7 @@ Available nodes
 import numpy as np
 from typing import List, Optional
 from ironframe.ironframe import Tensor
-
+from cache import CacheStore
 
 # ---------------------------------------------------------------------------
 # Base
@@ -57,14 +57,15 @@ class Node:
         - A repr for debugging
     """
 
-    def __init__(self):
+    def __init__(self, node_id: int, name: str = ""):
+        self.id = node_id
         self._inputs: List[Tensor] = []   # cached during forward for backward use
         self._output: Optional[Tensor] = None
-        self._state     = {}   # private working memory for this Node's backward
+        self._state = {}   # private working memory for this Node's backward
 
     # -- Public interface ----------------------------------------------------
 
-    def __call__(self, *inputs: Tensor) -> Tensor:
+    def __call__(self, *inputs: Tensor) -> Tensor|None:
         self._inputs = list(inputs)
         out = self._forward(*inputs)
         self._output = out
