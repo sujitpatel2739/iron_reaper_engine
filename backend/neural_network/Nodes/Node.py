@@ -63,10 +63,10 @@ class Node:
         self._output: Any
         self._state = {}   # private working memory for this Node's backward
 
-    def _forward(self, *inputs: Tensor) -> Optional[Tensor]|None:
+    def _forward(self, *inputs: Tensor) -> Optional[Any]|None:
         raise NotImplementedError
 
-    def _backward(self, grad: Tensor) -> List[Tensor]:
+    def _backward(self, grad: Tensor) -> Optional[Any]:
         raise NotImplementedError
 
     # -- Public interface ----------------------------------------------------
