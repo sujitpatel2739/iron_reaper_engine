@@ -1,9 +1,23 @@
-from neural_network.Nodes.Node import Node
+"""
+Nodes.py
+--------
+Concrete Node implementations.
+
+All arithmetic ops delegate to ironframe functions (add, sub, mul, div, sqrt)
+so broadcasting and autograd are handled consistently in one place.
+
+_state stores whatever the backward pass needs — inputs, masks, split indices.
+Every node accepts node_id: int and name: str and passes them to Node.__init__.
+"""
+
 import numpy as np
 from typing import Callable, List, Optional, Any
-from ironframe.ironframe import Tensor
+
+from ironframe.ironframe import Tensor, add, sub, mul, div, sqrt, _revbroadcast
 from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
-from backend.registries.ConditionRegistry import Condition
+from ConditionRegistry import Condition
+from Node import Node
+
 
 # ---------------------------------------------------------------------------
 # Arithmetic nodes
@@ -13,48 +27,31 @@ class AddNode(Node):
     """
     Element-wise sum of N input tensors.
 
-    Parameters
-    ----------
-    axis : int or None
-        If set, inputs are broadcast-summed along this axis.
-        For the common residual-connection case (just element-wise add),
-        leave axis=None.
-
     Backward
     --------
-    dL/dx_i = grad  for all i   (addition distributes the gradient equally)
-    If a broadcast happened (shapes differ), the gradient is summed back over
-    the broadcast dimension before being returned to that input.
+    dL/dx_i = grad for all i.
+    If a broadcast happened (shapes differ), _revbroadcast collapses the
+    gradient back to the original shape before returning it to that input.
     """
 
-    def __init__(self, axis: Optional[int] = None):
-        super().__init__()
+    def __init__(self, node_id: int, name: str = "", axis: Optional[int] = None):
+        super().__init__(node_id, name)
         self.axis = axis
 
     def _forward(self, *inputs: Tensor) -> Tensor:
         self._require_at_least(inputs, 2)
-        data = inputs[0].data.copy()
+        # Delegate to ironframe add — handles broadcasting and autograd graph
+        out = inputs[0]
         for t in inputs[1:]:
-            data = data + t.data
-        requires_grad = any(t.requires_grad for t in inputs)
-        return self._wrap(data, requires_grad)
+            out = add(out, t)
+        # Save inputs for backward
+        self._state['inputs'] = list(inputs)
+        self._state['out'] = out
+        return out
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
-        grads = []
-        for inp in self._inputs:
-            g = grad.data
-            # If shapes differ due to broadcasting, reduce back
-            if g.shape != inp.data.shape:
-                reduce_axes = tuple(
-                    i for i, (gs, is_) in enumerate(
-                        zip(g.shape[::-1], inp.data.shape[::-1])
-                    ) if gs != is_
-                )
-                if reduce_axes:
-                    g = np.sum(g, axis=reduce_axes, keepdims=True)
-                g = g.reshape(inp.data.shape)
-            grads.append(self._wrap(g, inp.requires_grad))
-        return grads
+        out = self._state['out']
+        return out.backward(grad)
 
 
 class SubNode(Node):
