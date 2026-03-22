@@ -240,8 +240,10 @@ def mul(t1, t2):
     if requires_grad:
         out.parents = [t1, t2]
         def backward_fn(grad):
-            grad_t1 = _revbroadcast(grad * t2.data, t1)  # scale by t2, then _unrevbroadcast to t1's shape
-            grad_t2 = _revbroadcast(grad * t1.data, t2)  # scale by t1, then _unrevbroadcast to t2's shape
+            grad_t1 = _totensor(grad.data * t2.data)
+            grad_t1 = _revbroadcast(grad_t1, t1)  # scale by t2, then _unrevbroadcast to t1's shape
+            grad_t2 = _totensor(grad.data * t1.data)
+            grad_t2 = _revbroadcast(grad_t2, t2)  # scale by t1, then _unrevbroadcast to t2's shape
             return [grad_t1, grad_t2]
         out.backward_fn = backward_fn
     return out
