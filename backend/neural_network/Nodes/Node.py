@@ -35,7 +35,7 @@ Available nodes
 """
 
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Any
 from ironframe.ironframe import Tensor
 from cache import CacheStore
 
@@ -59,15 +59,21 @@ class Node:
 
     def __init__(self, node_id: int, name: str = ""):
         self.id = node_id
-        self._inputs: List[Tensor] = []   # cached during forward for backward use
-        self._output: Optional[Tensor] = None
+        self._inputs: Any   # cached during forward for backward use
+        self._output: Any
         self._state = {}   # private working memory for this Node's backward
+
+    def _forward(self, *inputs: Tensor) -> Optional[Tensor]|None:
+        raise NotImplementedError
+
+    def _backward(self, grad: Tensor) -> List[Tensor]:
+        raise NotImplementedError
 
     # -- Public interface ----------------------------------------------------
 
-    def __call__(self, *inputs: Tensor) -> Tensor|None:
-        self._inputs = list(inputs)
-        out = self._forward(*inputs)
+    def __call__(self, *args) -> Tensor|None:
+        self._inputs = list(*args)
+        out = self._forward(*args)
         self._output = out
         return out
 
@@ -78,21 +84,15 @@ class Node:
         """
         return self._backward(grad)
 
-    def _forward(self, *inputs: Tensor) -> Optional[Tensor]|None:
-        raise NotImplementedError
-
-    def _backward(self, grad: Tensor) -> List[Tensor]:
-        raise NotImplementedError
-
     def _require_n_inputs(self, inputs, n: int):
-        if len(inputs) != n:
+        if len(inputs) != n or None in inputs:
             raise ValueError(
                 f"{type(self).__name__} expects exactly {n} input(s), "
                 f"got {len(inputs)}."
             )
 
     def _require_at_least(self, inputs, n: int):
-        if len(inputs) < n:
+        if len(inputs) < n or inputs.count(None) == len(inputs):
             raise ValueError(
                 f"{type(self).__name__} expects at least {n} input(s), "
                 f"got {len(inputs)}."
