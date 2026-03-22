@@ -40,10 +40,9 @@ class AddNode(Node):
 
     def _forward(self, *inputs: Tensor) -> Tensor:
         self._require_at_least(inputs, 2)
-        # Delegate to ironframe add — handles broadcasting and autograd graph
         out = inputs[0]
         for t in inputs[1:]:
-            out = add(out, t)
+            out = out + t
         # Save inputs for backward
         self._state['inputs'] = list(inputs)
         self._state['out'] = out
@@ -70,7 +69,7 @@ class SubNode(Node):
     def _forward(self, *inputs: Tensor) -> Tensor:
         self._require_n_inputs(inputs, 2)
         t1, t2 = inputs
-        out = sub(t1, t2)
+        out = t1 - t2
         self._state['inputs'] = [t1, t2]
         self._state['out']    = out
         return out
@@ -86,28 +85,24 @@ class MulNode(Node):
     Backward
     --------
     dL/dx_i = grad * product_of_all_others
-    Computed efficiently: total_product / x_i  (with zero-safe fallback).
+    _revbroadcast collapses the result back to each input's original shape.
     """
+
+    def __init__(self, node_id: int, name: str = ""):
+        super().__init__(node_id, name)
 
     def _forward(self, *inputs: Tensor) -> Tensor:
         self._require_at_least(inputs, 2)
-        data = inputs[0].data.copy()
+        out = inputs[0]
         for t in inputs[1:]:
-            data = data * t.data
-        requires_grad = any(t.requires_grad for t in inputs)
-        return self._wrap(data, requires_grad)
+            out = out * t
+        self._state['inputs'] = list(inputs)
+        self._state['out']    = out
+        return out
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
-        grads = []
-        n = len(self._inputs)
-        for i, inp in enumerate(self._inputs):
-            # product of all inputs except i
-            others = np.ones_like(inp.data)
-            for j, other in enumerate(self._inputs):
-                if j != i:
-                    others = others * other.data
-            grads.append(self._wrap(grad.data * others, inp.requires_grad))
-        return grads
+        out = self._state['out']
+        return out.backward(grad)
 
 
 class DivNode(Node):
