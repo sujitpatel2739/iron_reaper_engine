@@ -36,7 +36,7 @@ Available nodes
 
 import numpy as np
 from typing import List, Optional
-from core.ironframe.ironframe import Tensor
+from ironframe.ironframe import Tensor
 
 
 # ---------------------------------------------------------------------------
@@ -60,10 +60,11 @@ class Node:
     def __init__(self):
         self._inputs: List[Tensor] = []   # cached during forward for backward use
         self._output: Optional[Tensor] = None
+        self._state     = {}   # private working memory for this Node's backward
 
     # -- Public interface ----------------------------------------------------
 
-    def forward(self, *inputs: Tensor) -> Tensor:
+    def __call__(self, *inputs: Tensor) -> Tensor:
         self._inputs = list(inputs)
         out = self._forward(*inputs)
         self._output = out
@@ -76,7 +77,7 @@ class Node:
         """
         return self._backward(grad)
 
-    def _forward(self, *inputs: Tensor) -> Tensor:
+    def _forward(self, *inputs: Tensor) -> Optional[Tensor]|None:
         raise NotImplementedError
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
@@ -102,3 +103,11 @@ class Node:
     def __repr__(self):
         n_in = len(self._inputs)
         return f"{type(self).__name__}(cached_inputs={n_in})"
+    
+    # -- CacheStore helpers --------------------------------------------------
+
+    def _write(self, slot: str, tensor: Tensor) -> None:
+        CacheStore.write(self.id, slot, tensor)
+
+    def _read(self, slot: str) -> Tensor:
+        return CacheStore.read_required(self.id, slot)
