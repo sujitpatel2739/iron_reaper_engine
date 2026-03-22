@@ -32,7 +32,8 @@ If a name is not found, get() raises a KeyError with a helpful message.
 
 import numpy as np
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from ironframe.ironframe import Tensor
+from typing import Callable, List, Any
 
 # ---------------------------------------------------------------------------
 # Condition dataclass
@@ -59,10 +60,10 @@ class Condition:
         mask = cond.fn(some_array)   # -> boolean ndarray
     """
     name: str
-    fn:   Callable[[np.ndarray], np.ndarray]
+    fn:   Callable[[Any], Any]
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        """Call the condition function directly on a numpy array."""
+    def __call__(self, x: Any) -> Any:
+        """Call the condition function directly on any value."""
         return self.fn(x)
 
     def __repr__(self):
@@ -126,14 +127,14 @@ _registry = {
 # Write / Read
 # ---------------------------------------------------------------------------
 
-def register(name: str, fn: Callable[[np.ndarray], np.ndarray], overwrite: bool = False) -> None:
+def register(name: str, fn: Callable[[Tensor], Tensor], overwrite: bool = False) -> None:
     """
     Register a condition function under a unique name.
 
     Parameters
     ----------
     name      : str       — unique identifier for this condition
-    fn        : callable  — takes np.ndarray, returns boolean np.ndarray
+    fn        : callable  — takes Tensor, returns boolean Tensor
     overwrite : bool      — if False (default), raises if name already exists
 
     Raises
@@ -179,7 +180,7 @@ def get(name: str) -> Condition:
     return _registry[name]
 
 
-# def make(name: str, fn: Callable[[np.ndarray], np.ndarray]) -> Condition:
+# def make(name: str, fn: Callable[[Tensor], Tensor]) -> Condition:
 #     """
 #     Register a condition and return it in one step.
 #     Useful when building a network inline.
