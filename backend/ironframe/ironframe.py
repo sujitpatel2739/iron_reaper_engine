@@ -255,8 +255,10 @@ def div(t1, t2):
     if requires_grad:
         out.parents = [t1, t2]
         def backward_fn(grad):
-            grad_t1 = _revbroadcast(grad / t2.data, t1)
-            grad_t2 = _revbroadcast(-grad * t1.data / (t2.data ** 2), t2)
+            grad_t1 = _totensor(grad.data / t2.data)
+            grad_t1 = _revbroadcast(grad_t1, t1)
+            grad_t2 = _totensor(-grad.data * t1.data / (t2.data ** 2))
+            grad_t2 = _revbroadcast(grad_t2, t2)
             return [grad_t1, grad_t2]
         out.backward_fn = backward_fn
     return out
