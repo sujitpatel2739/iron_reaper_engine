@@ -131,7 +131,7 @@ class Tensor:
         return matmul(self, other)
     
     def __neg__(self):
-        return self * -1
+        return neg(self)
     
     def __pow__(self, power):
         if not isinstance(power, int) or power < 0:
@@ -255,11 +255,8 @@ def div(t1, t2):
     if requires_grad:
         out.parents = [t1, t2]
         def backward_fn(grad):
-            grad_t1 = _totensor(grad.data / t2.data)
-            grad_t1 = _revbroadcast(grad_t1, t1)
-            grad_t2 = _totensor(-grad.data * t1.data / (t2.data ** 2))
-            grad_t2 = _revbroadcast(grad_t2, t2)
-            return [grad_t1, grad_t2]
+            return [_revbroadcast(_totensor(grad.data / t2.data), t1),
+                    _revbroadcast(_totensor(-grad.data * t1.data / (t2.data ** 2)), t2)]
         out.backward_fn = backward_fn
     return out
 
@@ -269,7 +266,7 @@ def sum(t, axis = 0, keepdims=True):
     if t.requires_grad:
         out.parents = [t]
         def backward_fn(grad):
-            return [np.ones_like(t.data) * grad]
+            return [_totensor(np.ones_like(t.data) * grad.data)]
         out.backward_fn = backward_fn
     return out
 
@@ -280,7 +277,7 @@ def mean(t, axis = 0, keepdims=True):
     if t.requires_grad:
         out.parents = [t]
         def backward_fn(grad):            
-            return [np.ones_like(t.data) * grad/n]
+            return [_totensor(np.ones_like(t.data) * grad.data/n)]
         out.backward_fn = backward_fn
     return out
 
@@ -290,8 +287,9 @@ def matmul(t1, t2):
     out = Tensor(np.matmul(t1.data, t2.data), requires_grad=requires_grad)
     if requires_grad:
         out.parents = [t1, t2]
-        def backward_fn(grad):            
-            return [np.matmul(grad, t2.data.T), np.matmul(t1.data.T, grad)]
+        def backward_fn(grad):
+            return [_totensor(np.matmul(grad.data, t2.data.T)),
+                    _totensor(np.matmul(t1.data.T, grad.data))]
         out.backward_fn = backward_fn
     return out
 
@@ -301,6 +299,16 @@ def sqrt(t):
     if t.requires_grad:
         out.parents = [t]
         def backward_fn(grad):            
-            return [grad / (2 * np.sqrt(t.data))]
+            return [_totensor(grad.data / (2 * np.sqrt(t.data)))]
+        out.backward_fn = backward_fn
+    return out
+
+def neg(t):
+    t = _totensor(t)
+    out = Tensor(-t.data, requires_grad=t.requires_grad)
+    if t.requires_grad:
+        out.parents = [t]
+        def backward_fn(grad):            
+            return [_totensor(-grad.data)]
         out.backward_fn = backward_fn
     return out
