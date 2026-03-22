@@ -53,7 +53,6 @@ class AddNode(Node):
         out = self._state['out']
         return out.backward(grad)
 
-
 class SubNode(Node):
     """
     t1 - t2  (exactly two inputs).
@@ -62,21 +61,23 @@ class SubNode(Node):
     --------
     dL/dt1 =  grad
     dL/dt2 = -grad
+    Both are _revbroadcast'd back to their original shapes.
     """
+
+    def __init__(self, node_id: int, name: str = ""):
+        super().__init__(node_id, name)
 
     def _forward(self, *inputs: Tensor) -> Tensor:
         self._require_n_inputs(inputs, 2)
         t1, t2 = inputs
-        requires_grad = t1.requires_grad or t2.requires_grad
-        return self._wrap(t1.data - t2.data, requires_grad)
+        out = sub(t1, t2)
+        self._state['inputs'] = [t1, t2]
+        self._state['out']    = out
+        return out
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
-        t1, t2 = self._inputs
-        return [
-            self._wrap( grad.data, t1.requires_grad),
-            self._wrap(-grad.data, t2.requires_grad),
-        ]
-
+        out = self._state['out']
+        return out.backward(grad)
 
 class MulNode(Node):
     """
