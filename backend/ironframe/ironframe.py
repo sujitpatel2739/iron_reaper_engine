@@ -190,14 +190,17 @@ class Tensor:
         # print("Freezed tensor: ", detached)
         return detached
 
-def generate_tensor(shape: tuple|int  = 3, fill = None):
+def generate_tensor(shape: tuple|int  = 3, fill = None, requires_grad = False):
     shape = shape if isinstance(shape, (tuple, list)) else (shape, shape)
     if isinstance(fill, int):
-        return np.full(shape, fill)
+        data = np.full(shape, fill)
     elif fill == 'normal':
-        return np.random.normal(loc=0, scale=1, size=shape)
+        data = np.random.normal(loc=0, scale=1, size=shape)
     elif fill == 'uniform':
-        return np.random.uniform(0, 10, shape)
+        data = np.random.uniform(0, 10, shape)
+    else:
+        raise Exception(f"Error: Invalid 'fill' received in generate_tensor(): {fill}")
+    return Tensor(data, requires_grad=requires_grad)
     
 def _totensor(*args):
     if len(args) < 1:
