@@ -52,7 +52,8 @@ class AddNode(Node):
 
     def _backward(self, grad: Tensor) -> Any:
         out = self._state['out']
-        return out.backward(grad)
+        grad_in = out.backward(grad)
+        
 
 class SubNode(Node):
     """
