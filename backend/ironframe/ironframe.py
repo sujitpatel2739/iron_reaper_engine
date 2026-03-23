@@ -327,7 +327,7 @@ def split(t, n_splits:int, axis:int = 0):
     out = Tensor([], requires_grad=True)
     splits = []
     shape = t.shape
-    max_split_size = round(axis_size / n_splits)
+    max_split_size = round(shape[axis] / n_splits)
     start = 0
     end = start + max_split_size
     def split_in_axis(t, start, end, axis):
