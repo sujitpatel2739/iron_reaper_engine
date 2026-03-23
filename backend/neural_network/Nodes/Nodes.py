@@ -47,6 +47,7 @@ class AddNode(Node):
         # Save inputs for backward
         self._state['inputs'] = list(inputs)
         self._state['out'] = out
+        self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> Any:
@@ -73,6 +74,7 @@ class SubNode(Node):
         out = t1 - t2
         self._state['inputs'] = [t1, t2]
         self._state['out']    = out
+        self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> Any:
@@ -99,6 +101,7 @@ class MulNode(Node):
             out = out * t
         self._state['inputs'] = list(inputs)
         self._state['out']    = out
+        self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> Any:
@@ -124,6 +127,7 @@ class DivNode(Node):
         out = t1 / t2
         self._state['inputs'] = [t1, t2]
         self._state['out']    = out
+        self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> Any:
@@ -148,6 +152,7 @@ class SqNode(Node):
         out = t ** 2
         self._state['input'] = t
         self._state['out']   = out
+        self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> Any:
@@ -177,6 +182,7 @@ class NegNode(Node):
         out = -t
         self._state['input'] = t
         self._state['out']   = out
+        self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> Any:
@@ -203,6 +209,7 @@ class SqrtNode(Node):
         out = sqrt(t)
         self._state['input'] = t
         self._state['out']   = out
+        self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
@@ -229,6 +236,7 @@ class SqrtNode(Node):
 #         out = t * self.scalar
 #         self._state['input'] = t
 #         self._state['out']   = out
+          # self._write(SLOT_OUTPUT, out)
 #         return out
 
 #     def _backward(self, grad: Tensor) -> List[Tensor]:
@@ -258,6 +266,7 @@ class ClipNode(Node):
         self._state['input'] = t
         self._state['mask']  = mask      # save mask — backward needs it
         self._state['out']   = out
+        self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
@@ -295,6 +304,7 @@ class ConcatNode(Node):
         self._state['inputs']        = list(inputs)
         self._state['split_indices'] = split_indices
         self._state['out']           = out
+        self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
@@ -333,6 +343,7 @@ class SplitNode(Node):
         out_chunks    = [self._wrap(c, requires_grad) for c in chunks]
         self._state['input']  = t
         self._state['chunks'] = out_chunks
+        # self._write(SLOT_OUTPUT, out_chunks)
         return out_chunks
 
     def _backward(self, grads: List[Tensor]) -> List[Tensor]:
@@ -467,6 +478,7 @@ class ConditionNode(Node):
                 self._state['bool'] = 'false'
 
         self._state['out'] = result
+        self._write(SLOT_OUTPUT, result)
         return result
 
     # -- backward ------------------------------------------------------------
