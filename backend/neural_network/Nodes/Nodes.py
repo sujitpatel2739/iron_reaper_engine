@@ -53,6 +53,8 @@ class AddNode(Node):
     def _backward(self, grad: Tensor) -> Any:
         out = self._state['out']
         grad_in = out.backward(grad)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in
         
 
 class SubNode(Node):
@@ -80,7 +82,9 @@ class SubNode(Node):
 
     def _backward(self, grad: Tensor) -> Any:
         out = self._state['out']
-        return out.backward(grad)
+        grad_in = out.backward(grad)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in
 
 class MulNode(Node):
     """
@@ -107,7 +111,9 @@ class MulNode(Node):
 
     def _backward(self, grad: Tensor) -> Any:
         out = self._state['out']
-        return out.backward(grad)
+        grad_in = out.backward(grad)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in
 
 class DivNode(Node):
     """
@@ -133,7 +139,9 @@ class DivNode(Node):
 
     def _backward(self, grad: Tensor) -> Any:
         out = self._state['out']
-        return out.backward(grad)
+        grad_in = out.backward(grad)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in
 
 class SqNode(Node):
     """
@@ -158,7 +166,9 @@ class SqNode(Node):
 
     def _backward(self, grad: Tensor) -> Any:
         out = self._state['out']
-        return out.backward(grad)
+        grad_in = out.backward(grad)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +198,9 @@ class NegNode(Node):
 
     def _backward(self, grad: Tensor) -> Any:
         out = self._state['out']
-        return out.backward(grad)
+        grad_in = out.backward(grad)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in
 
 
 class SqrtNode(Node):
@@ -215,7 +227,9 @@ class SqrtNode(Node):
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
         out = self._state['out']
-        return out.backward(grad)
+        grad_in = out.backward(grad)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in
 
 # class ScaleNode(Node):
 #     """
@@ -350,7 +364,9 @@ class SplitNode(Node):
     def _backward(self, grads: List[Tensor]) -> List[Tensor]:
         t = self._state['input']
         out = self._state['out']
-        return out.backward(grads)
+        grad_in = out.backward(grads)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in
 
 # --------------------------------------------------------------------------
 # Condition node
