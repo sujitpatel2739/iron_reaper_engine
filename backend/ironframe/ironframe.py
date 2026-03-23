@@ -190,6 +190,15 @@ class Tensor:
         # print("Freezed tensor: ", detached)
         return detached
 
+def generate_tensor(shape: tuple|int  = 3, fill = None):
+    shape = shape if isinstance(shape, (tuple, list)) else (shape, shape)
+    if isinstance(fill, int):
+        return np.full(shape, fill)
+    elif fill == 'normal':
+        return np.random.normal(loc=0, scale=1, size=shape)
+    elif fill == 'uniform':
+        return np.random.uniform(0, 10, shape)
+    
 def _totensor(*args):
     if len(args) < 1:
         raise Exception('Error: _totensor() requries minimum 1 argument')
@@ -313,15 +322,25 @@ def neg(t):
         out.backward_fn = backward_fn
     return out
 
-def Split(t:Tensor, n_splits:int, axis:int = 0):
+def split(t, n_splits:int, axis:int = 0):
+    t = _totensor(t)
+    out = Tensor([], requires_grad=True)
     splits = []
-    axis_size = t.shape[axis]
+    shape = t.shape
     max_split_size = round(axis_size / n_splits)
     start = 0
     end = start + max_split_size
+    def split_in_axis(t, start, end, axis):
+        return 
     for i in range(n_splits):
-        splits.append(t.data[start:end])
-        start = min(start+end, axis_size)
-        end = min(end+max_split_size, axis_size)
-    return _totensor(splits)
-    
+        splits.append(Tensor(t.data[start:end], requires_grad=t.requires_grad))
+        start = min(start+end, shape[axis])
+        end = min(end+max_split_size, shape[axis])
+    if t.requires_grad:
+        out.parents = [t]
+        def backward_fn(grads):
+            grad_in = np.concatenate([g.data for g in grads], axis=axis)
+            return [Tensor(grad_in, requires_grad=t.requires_grad),]
+
+    return Tensor(splits, requires_grad=t.requires_grad)
+
