@@ -1,4 +1,6 @@
 import numpy as np
+from copy import deepcopy
+from typing import Optional, Any
 
 class Tensor:
     __hash__ = None
@@ -325,25 +327,18 @@ def neg(t):
         out.backward_fn = backward_fn
     return out
 
-def split(t, n_splits:int, axis:int = 0):
+def split(t, n_splits: int, axis: int = 0):
     t = _totensor(t)
-    out = Tensor([], requires_grad=True)
-    splits = []
-    shape = t.shape
-    max_split_size = round(shape[axis] / n_splits)
-    start = 0
-    end = start + max_split_size
-    def split_in_axis(t, start, end, axis):
-        return 
-    for i in range(n_splits):
-        splits.append(Tensor(t.data[start:end], requires_grad=t.requires_grad))
-        start = min(start+end, shape[axis])
-        end = min(end+max_split_size, shape[axis])
+
+    chunks = np.array_split(t.data, n_splits, axis=axis)
+    splits = [Tensor(c, requires_grad=t.requires_grad) for c in chunks]
+
     if t.requires_grad:
-        out.parents = [t]
         def backward_fn(grads):
             grad_in = np.concatenate([g.data for g in grads], axis=axis)
-            return [Tensor(grad_in, requires_grad=t.requires_grad),]
+            return [Tensor(grad_in, requires_grad=t.requires_grad)]
+        for s in splits:
+            s.parents = [t]
+            s.backward_fn = backward_fn
 
-    return Tensor(splits, requires_grad=t.requires_grad)
-
+    return splits
