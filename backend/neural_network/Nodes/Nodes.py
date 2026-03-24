@@ -13,7 +13,7 @@ Every node accepts node_id: int and name: str and passes them to Node.__init__.
 import numpy as np
 from typing import Callable, List, Optional, Any
 
-from ironframe.ironframe import Tensor, sqrt, split
+from ironframe.ironframe import Tensor, sqrt, split, rangeclip
 from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
 from ConditionRegistry import Condition
 from Node import Node
@@ -259,7 +259,7 @@ class SqrtNode(Node):
 #         return [self._wrap(grad.data * self.scalar, t.requires_grad)]
 
 
-class ClipNode(Node):
+class RangeclipNode(Node):
     """
     Clamp values into [min_val, max_val].
 
@@ -275,20 +275,17 @@ class ClipNode(Node):
 
     def _forward(self, *inputs: Tensor) -> Tensor:
         self._require_n_inputs(inputs, 1)
-        t    = inputs[0]
-        out  = self._wrap(np.clip(t.data, self.min_val, self.max_val), t.requires_grad)
-        mask = (t.data >= self.min_val) & (t.data <= self.max_val)
-        self._state['input'] = t
-        self._state['mask']  = mask      # save mask — backward needs it
+        out, mask = rangeclip(inputs[0], self.min_val, self.max_val)
+        self._state['mask']  = mask
         self._state['out']   = out
         self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
-        t    = self._state['input']
-        mask = self._state['mask']
-        return [self._wrap(grad.data * mask.astype(np.float32), t.requires_grad)]
-
+        out = self._state['out']
+        grad_in = out.backward(grad)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in
 
 # ---------------------------------------------------------------------------
 # Shape nodes
