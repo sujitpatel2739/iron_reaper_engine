@@ -66,18 +66,18 @@ class Node:
     def _forward(self, *inputs: Tensor) -> Optional[Any]|None:
         raise NotImplementedError
 
-    def _backward(self, grad: Tensor) -> Optional[Any]:
+    def _backward(self, grad) -> Optional[Any]|None:
         raise NotImplementedError
 
     # -- Public interface ----------------------------------------------------
 
-    def __call__(self, *args) -> Tensor|None:
+    def __call__(self, *args) -> Optional[Any]|None:
         self._inputs = list(*args)
         out = self._forward(*args)
         self._output = out
         return out
 
-    def backward(self, grad: Tensor) -> List[Tensor]:
+    def backward(self, grad) -> Optional[Any]|None:
         """
         Returns a list of gradient Tensors, one per input passed to forward(),
         in the same order.
@@ -107,7 +107,7 @@ class Node:
     
     # -- CacheStore helpers --------------------------------------------------
 
-    def _write(self, slot: str, tensor: Tensor) -> None:
+    def _write(self, slot: str, tensor) -> None:
         CacheStore.write(self.id, slot, tensor)
 
     def _read(self, slot: str) -> Tensor:
