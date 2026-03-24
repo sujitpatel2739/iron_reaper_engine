@@ -13,7 +13,7 @@ Every node accepts node_id: int and name: str and passes them to Node.__init__.
 import numpy as np
 from typing import Callable, List, Optional, Any
 
-from ironframe.ironframe import Tensor, sqrt, split, rangeclip
+from ironframe.ironframe import Tensor, sqrt, split, rangeclip, concate
 from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
 from ConditionRegistry import Condition
 from Node import Node
@@ -306,28 +306,18 @@ class ConcatNode(Node):
 
     def _forward(self, *inputs: Tensor) -> Tensor:
         self._require_at_least(inputs, 2)
-        sizes         = [t.shape[self.axis] for t in inputs]
-        split_indices = np.cumsum(sizes[:-1]).tolist()
-        requires_grad = any(t.requires_grad for t in inputs)
-        out           = self._wrap(
-            np.concatenate([t.data for t in inputs], axis=self.axis),
-            requires_grad
-        )
-        self._state['inputs']        = list(inputs)
+        out, split_indices = concate(inputs, self.axis)
+        self._state['inputs'] = list(inputs)
         self._state['split_indices'] = split_indices
-        self._state['out']           = out
+        self._state['out'] = out
         self._write(SLOT_OUTPUT, out)
         return out
 
     def _backward(self, grad: Tensor) -> List[Tensor]:
-        inputs        = self._state['inputs']
-        split_indices = self._state['split_indices']
-        slices        = np.split(grad.data, split_indices, axis=self.axis)
-        return [
-            self._wrap(s, inp.requires_grad)
-            for s, inp in zip(slices, inputs)
-        ]
-
+        out = self._state['out']
+        grad_in = out.backward(grad)
+        self._write(SLOT_GRAD_IN, grad_in)
+        return grad_in # List of grad_in(s)
 
 class SplitNode(Node):
     """
