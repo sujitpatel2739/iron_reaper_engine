@@ -355,3 +355,17 @@ def rangeclip(t, min_val:float, max_val: float):
         t.backward_fn = backward_fn
         
     return out, mask
+
+def concate(ts, axis:int = 0):
+    ts = _totensor(ts)
+    sizes = [t.shape[axis] for t in ts]
+    split_indices = np.cumsum(sizes[:-1]).tolist()
+    out = Tensor(np.concatenate([t.data for t in ts], axis=axis), requires_grad)
+    requires_grad = any(t.requires_grad for t in ts)
+    if requires_grad:
+        out.parents = list(ts)
+        def backward_fn(grad):
+            slices = np.split(grad.data, split_indices, axis=axis)
+            return [Tensor(s, requires_grad) for s, inp in zip(slices, inputs)]
+    
+    return out, split_indices
