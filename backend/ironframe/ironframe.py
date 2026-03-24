@@ -349,6 +349,7 @@ def rangeclip(t, min_val:float, max_val: float):
     mask = (t.data >= min_val) & (t.data <= max_val)
     
     if t.requires_grad:
+        out.parents = [t]
         def backward_fn(grad):
             return [Tensor(grad.data * mask.astype(np.float32), t.requires_grad)]
         t.backward_fn = backward_fn
