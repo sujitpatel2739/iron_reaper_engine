@@ -338,22 +338,16 @@ class SplitNode(Node):
 
     def _forward(self, *inputs: Tensor) -> List[Tensor]:
         self._require_n_inputs(inputs, 1)
-        self._inputs  = list(inputs)
-        t             = inputs[0]
-        chunks        = split(t, self.n_splits, axis=self.axis)
-        requires_grad = t.requires_grad
-        out_chunks    = [self._wrap(c, requires_grad) for c in chunks]
-        self._state['input']  = t
-        self._state['chunks'] = out_chunks
+        out = split(self.n_splits, self.axis)
+        self._state['out'] = out
         # self._write(SLOT_OUTPUT, out_chunks)
-        return out_chunks
+        return out # List of splited Tensors
 
     def _backward(self, grads: List[Tensor]) -> List[Tensor]:
-        t = self._state['input']
         out = self._state['out']
         grad_in = out.backward(grads)
         self._write(SLOT_GRAD_IN, grad_in)
-        return grad_in
+        return grad_in # One grad_in Tensor
 
 # --------------------------------------------------------------------------
 # Condition node
