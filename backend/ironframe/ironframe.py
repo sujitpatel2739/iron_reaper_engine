@@ -342,3 +342,15 @@ def split(t, n_splits: int, axis: int = 0):
             s.backward_fn = backward_fn
 
     return splits
+
+def rangeclip(t, min_val:float, max_val: float):
+    t = _totensor(t)
+    out = Tensor(np.clip(t.data, min_val, max_val), t.requires_grad)
+    mask = (t.data >= min_val) & (t.data <= max_val)
+    
+    if t.requires_grad:
+        def backward_fn(grad):
+            return [Tensor(grad.data * mask.astype(np.float32), t.requires_grad)]
+        t.backward_fn = backward_fn
+        
+    return out, mask
