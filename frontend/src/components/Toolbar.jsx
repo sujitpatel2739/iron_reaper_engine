@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { useGraphStore } from '../store/Usegraphstore';
 import { validateNetwork, importModel, saveNetwork, loadNetwork, runFull } from '../api/api';
 
@@ -9,11 +9,16 @@ function DraggablePill({ label, nodeType, kind, color = 'var(--text-secondary)' 
       onDragStart={e => {
         e.dataTransfer.setData('nodeType', nodeType);
         e.dataTransfer.setData('nodeKind', kind);
+        // Capture offset inside the pill so the drop lands exactly at cursor
+        const rect = e.currentTarget.getBoundingClientRect();
+        const offX = e.clientX - rect.left;
+        const offY = e.clientY - rect.top;
+        if (window.__setDragOffset) window.__setDragOffset(offX, offY);
       }}
       style={{
         padding: '3px 10px',
         borderRadius: 2,
-        border: `1px solid var(--border)`,
+        border: '1px solid var(--border)',
         background: 'var(--bg-surface)',
         fontFamily: 'var(--font-mono)',
         fontSize: 10,
@@ -23,8 +28,14 @@ function DraggablePill({ label, nodeType, kind, color = 'var(--text-secondary)' 
         whiteSpace: 'nowrap',
         transition: 'all 0.12s',
       }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = color; e.currentTarget.style.color = color; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = color; }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = color;
+        e.currentTarget.style.color = color;
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = 'var(--border)';
+        e.currentTarget.style.color = color;
+      }}
     >
       {label}
     </div>
@@ -32,7 +43,13 @@ function DraggablePill({ label, nodeType, kind, color = 'var(--text-secondary)' 
 }
 
 function Divider() {
-  return <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px', flexShrink: 0 }} />;
+  return (
+    <div style={{
+      width: 1, height: 20,
+      background: 'var(--border)',
+      margin: '0 4px', flexShrink: 0,
+    }} />
+  );
 }
 
 function ToolBtn({ children, onClick, color = 'var(--text-secondary)', title, disabled }) {
@@ -79,7 +96,7 @@ export default function Toolbar() {
   const locked = runMode !== 'idle';
 
   const handleValidate = async () => {
-    const result = await validateNetwork({ nodes, edges });
+    const result = await validateNetwork({ nodes, edges }, runConfig.input_shape);
     (result.warnings ?? []).forEach(w => setNodeWarnings(w.node_id, [w.message]));
     if (result.warnings?.length === 0) alert('Network is valid ✓');
   };
@@ -90,10 +107,7 @@ export default function Toolbar() {
     setAllNodeStatuses('locked');
     try {
       const report = await runFull({ nodes, edges }, runConfig, inputFile);
-      // Distribute metrics to nodes
-      (report.raw_metrics ?? []).forEach(lm => {
-        setNodeMetrics(lm.layer_name, lm.metrics);
-      });
+      (report.raw_metrics ?? []).forEach(lm => setNodeMetrics(lm.layer_name, lm.metrics));
       setAllNodeStatuses('done');
       setRunMode('done');
     } catch {
@@ -129,6 +143,21 @@ export default function Toolbar() {
     e.target.value = '';
   };
 
+  // -- Layout toggle -------------------------------------------------------
+  // Swap x and y coordinates of every node to rotate the graph 90°.
+  // LR (horizontal, default): nodes flow left → right, x is the main axis.
+  // TB (vertical): nodes flow top → bottom, y is the main axis.
+  // Toggling swaps (x, y) on every node so the relative spacing is preserved.
+  const handleToggleLayout = () => {
+    toggleLayout();     // flip the direction flag in the store
+    useGraphStore.setState(s => ({
+      nodes: s.nodes.map(n => ({
+        ...n,
+        position: { x: n.position.y, y: n.position.x },
+      })),
+    }));
+  };
+
   return (
     <div style={{
       height: 44,
@@ -141,6 +170,7 @@ export default function Toolbar() {
       flexShrink: 0,
       overflowX: 'auto',
     }}>
+
       {/* Logo */}
       <span style={{
         fontFamily: 'var(--font-display)',
@@ -156,8 +186,23 @@ export default function Toolbar() {
 
       <Divider />
 
+      {/* InputLayer — special entry point pill */}
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>
+        ENTRY
+      </span>
+      <DraggablePill
+        label="InputLayer"
+        nodeType="InputLayer"
+        kind="inputLayer"
+        color="var(--phosphor)"
+      />
+
+      <Divider />
+
       {/* Layer palette */}
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>LAYERS</span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>
+        LAYERS
+      </span>
       {Object.keys(layerTypes).map(t => (
         <DraggablePill key={t} label={t} nodeType={t} kind="layer" color="var(--phosphor-dim)" />
       ))}
@@ -165,9 +210,11 @@ export default function Toolbar() {
       <Divider />
 
       {/* Node palette */}
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>NODES</span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>
+        NODES
+      </span>
       {Object.keys(nodeTypes).map(t => (
-        <DraggablePill key={t} label={t.replace('Node','')} nodeType={t} kind="operation" color="var(--blue-dim)" />
+        <DraggablePill key={t} label={t.replace('Node', '')} nodeType={t} kind="operation" color="var(--blue-dim)" />
       ))}
 
       <Divider />
@@ -176,28 +223,20 @@ export default function Toolbar() {
       <ToolBtn onClick={handleValidate} disabled={locked} color="var(--amber)" title="Validate shapes">
         ⚡ Validate
       </ToolBtn>
-      <ToolBtn
-        onClick={handleRun}
-        disabled={locked || !nodes.length}
-        color="var(--phosphor)"
-        title="Run full diagnostic"
-      >
+      <ToolBtn onClick={handleRun} disabled={locked || !nodes.length} color="var(--phosphor)" title="Run full diagnostic">
         ▶ Run
       </ToolBtn>
       {runMode !== 'idle' && (
-        <ToolBtn
-          onClick={() => { setRunMode('idle'); setAllNodeStatuses('idle'); }}
-          color="var(--red)"
-        >
+        <ToolBtn onClick={() => { setRunMode('idle'); setAllNodeStatuses('idle'); }} color="var(--red)">
           ■ Stop
         </ToolBtn>
       )}
 
       <Divider />
 
-      {/* Layout toggle */}
-      <ToolBtn onClick={toggleLayout} title="Toggle layout direction">
-        {layoutDirection === 'TB' ? '↔ Horizontal' : '↕ Vertical'}
+      {/* Layout toggle — swaps x/y on all nodes to rotate the graph */}
+      <ToolBtn onClick={handleToggleLayout} title="Toggle layout direction">
+        {layoutDirection === 'LR' ? '↕ Vertical' : '↔ Horizontal'}
       </ToolBtn>
 
       <Divider />

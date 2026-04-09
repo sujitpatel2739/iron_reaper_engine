@@ -12,11 +12,13 @@ export async function fetchNodeTypes() {
   return r.json();
 }
 
-export async function validateNetwork(graph) {
+export async function validateNetwork(graph, inputShape) {
+  // Include input_shape so the backend can seed root node shapes.
+  // Without it shape propagation is blind and no mismatch can be detected.
   const r = await fetch(`${BASE}/network/validate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(graph),
+    body: JSON.stringify({ ...graph, input_shape: inputShape ?? null }),
   });
   return r.json();  // { valid, warnings: [{node_id, message}] }
 }
