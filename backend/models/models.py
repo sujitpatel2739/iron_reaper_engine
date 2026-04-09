@@ -7,7 +7,8 @@ Nothing in backend/ imports from here — only api/ files do.
 """
 
 from pydantic import BaseModel
-from typing import Any, Dict, List, Optional
+import numpy as np
+from typing import Any, Dict, List, Optional, Callable
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +48,15 @@ class LayerMetrics(BaseModel):
     layer_name: str
     metrics:    Dict[str, Any]
 
+
+# ---------------------------------------------------------------------------
+# Layer / Node Inputs
+# ---------------------------------------------------------------------------
+
+class ConditionInput(BaseModel):
+    name: str
+    fn:   Callable[[np.ndarray], np.ndarray]
+    
 
 # ---------------------------------------------------------------------------
 # Profile results
