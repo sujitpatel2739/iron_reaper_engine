@@ -22,7 +22,7 @@ import diag.MetricStore as MetricStore
 from cache.CacheStore import (
     SLOT_INPUT, SLOT_OUTPUT,
     SLOT_GRAD_OUT, SLOT_GRAD_IN,
-    SLOT_RESIDUAL, SLOT_SHORTCUT,
+    # SLOT_RESIDUAL, SLOT_SHORTCUT,
 )
 
 class LayerObserver:
@@ -118,20 +118,20 @@ class SignalShapeObserver(LayerObserver):
 # ResidualEnergyObserver
 # ---------------------------------------------------------------------------
 
-class ResidualEnergyObserver(LayerObserver):
-    """
-    Reads : SLOT_RESIDUAL, SLOT_SHORTCUT
-    Writes: MetricStore  (residual_energy, shortcut_energy)
-    Silently skips layers that don't write these slots.
-    """
+# class ResidualEnergyObserver(LayerObserver):
+#     """
+#     Reads : SLOT_RESIDUAL, SLOT_SHORTCUT
+#     Writes: MetricStore  (residual_energy, shortcut_energy)
+#     Silently skips layers that don't write these slots.
+#     """
 
-    def __init__(self, run_id: int = 0):
-        super().__init__("ResidualEnergyObserver", run_id)
+#     def __init__(self, run_id: int = 0):
+#         super().__init__("ResidualEnergyObserver", run_id)
 
-    def on_forward_post(self, layer_id: int) -> None:
-        f = self._data(layer_id, SLOT_RESIDUAL)
-        s = self._data(layer_id, SLOT_SHORTCUT)
-        if f is None or s is None:
-            return
-        self._record(layer_id, "residual_energy", float(np.mean(f ** 2)))
-        self._record(layer_id, "shortcut_energy", float(np.mean(s ** 2)))
+#     def on_forward_post(self, layer_id: int) -> None:
+#         f = self._data(layer_id, SLOT_RESIDUAL)
+#         s = self._data(layer_id, SLOT_SHORTCUT)
+#         if f is None or s is None:
+#             return
+#         self._record(layer_id, "residual_energy", float(np.mean(f ** 2)))
+#         self._record(layer_id, "shortcut_energy", float(np.mean(s ** 2)))
