@@ -13,6 +13,7 @@ own backward ever reads. It is never accessed from outside.
 
 import numpy as np
 from types import MappingProxyType
+from typing import Any
 
 import cache.CacheStore as CacheStore
 from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
@@ -23,7 +24,7 @@ from ironframe.ironframe import Tensor, add, mul, matmul, mean, sqrt
 # ---------------------------------------------------------------------------
 
 class Layer:
-    def __init__(self, layer_id: int, name: str = ""):
+    def __init__(self, layer_id: Any, name: str = ""):
         self.id         = layer_id
         self.name       = f"layer_{layer_id}" if not name else name
         self.type       = type(self).__name__.lower()
@@ -75,7 +76,7 @@ class Layer:
 # ---------------------------------------------------------------------------
 
 class Linear(Layer):
-    def __init__(self, layer_id: int, in_features: int, out_features: int, name: str = ""):
+    def __init__(self, layer_id: Any, in_features: int, out_features: int, name: str = ""):
         super().__init__(layer_id, name)
         std      = np.sqrt(2.0 / in_features)
         self.W   = Tensor(np.random.normal(0, std, (in_features, out_features)), requires_grad=True)
@@ -94,13 +95,25 @@ class Linear(Layer):
         self._write(SLOT_GRAD_IN, grad_X)
         return grad_X
 
+class InputLayer(Layer):
+    def __init__(self, layer_id: Any, inputs: list, name: str = ""):
+        super().__init__(layer_id, name)
+        self.inputs = list(inputs)
+        self.parameters = {}
+
+    def _forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
+        return inputs
+
+    def _backward(self, grad: Tensor) -> Tensor:
+        return grad
+
 
 # ---------------------------------------------------------------------------
 # Activation Layers
 # ---------------------------------------------------------------------------
 
 class Relu(Layer):
-    def __init__(self, layer_id: int, name: str = ""):
+    def __init__(self, layer_id: Any, name: str = ""):
         super().__init__(layer_id, name)
 
     def _forward(self, x: Tensor) -> Tensor:
@@ -117,7 +130,7 @@ class Relu(Layer):
         return grad_X
 
 class Tanh(Layer):
-    def __init__(self, layer_id: int, name: str = ""):
+    def __init__(self, layer_id: Any, name: str = ""):
         super().__init__(layer_id, name)
 
     def _forward(self, x: Tensor) -> Tensor:
@@ -136,7 +149,7 @@ class Tanh(Layer):
         return grad_X
 
 class Sigmoid(Layer):
-    def __init__(self, layer_id: int, name: str = ""):
+    def __init__(self, layer_id: Any, name: str = ""):
         super().__init__(layer_id, name)
         
     def _forward(self, x: Tensor) -> Tensor:
@@ -154,7 +167,7 @@ class Sigmoid(Layer):
         return grad_X
 
 class LeakyRelu(Layer):
-    def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
+    def __init__(self, layer_id: Any, alpha: float = 0.01, name: str = ""):
         super().__init__(layer_id, name)
         self.alpha = alpha
 
@@ -176,7 +189,7 @@ class LeakyRelu(Layer):
         return grad_X
     
 class Elu(Layer):
-    def __init__(self, layer_id: int, alpha: float = 0.01, name: str = ""):
+    def __init__(self, layer_id: Any, alpha: float = 0.01, name: str = ""):
         super().__init__(layer_id, name)
         self.alpha = alpha
 
@@ -200,7 +213,7 @@ class Elu(Layer):
         return grad_X
 
 # class Gelu(Layer):
-#     def __init__(self, layer_id: int, name: str = ""):
+#     def __init__(self, layer_id: Any, name: str = ""):
 #         super().__init__(layer_id, name)
         
 #     def _forward(self, x: Tensor) -> Tensor:
@@ -222,7 +235,7 @@ class Elu(Layer):
 # ---------------------------------------------------------------------------
 
 class LayerNorm(Layer):
-    def __init__(self, layer_id: int, in_features: int, eps: float = 1e-5, name: str = ""):
+    def __init__(self, layer_id: Any, in_features: int, eps: float = 1e-5, name: str = ""):
         super().__init__(layer_id, name)
         self.eps   = eps
         self.gamma = Tensor(np.ones((1, in_features)),  requires_grad=True)
@@ -271,7 +284,7 @@ class LayerNorm(Layer):
 # ---------------------------------------------------------------------------
 
 class Conv2d(Layer):
-    def __init__(self, layer_id: int, in_channels: int, out_channels: int,
+    def __init__(self, layer_id: Any, in_channels: int, out_channels: int,
                  kernel_size: tuple|int = (3,3), stride: tuple|int = (1,1),
                  padding:tuple|str = 'same', name: str = ""):
         super().__init__(layer_id, name)

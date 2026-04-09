@@ -57,7 +57,7 @@ class Node:
         - A repr for debugging
     """
 
-    def __init__(self, node_id: int, name: str = ""):
+    def __init__(self, node_id: Any, name: str = ""):
         self.id = node_id
         self._inputs: Any   # cached during forward for backward use
         self._output: Any

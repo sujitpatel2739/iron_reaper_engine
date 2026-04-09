@@ -5,7 +5,7 @@ Wraps a Layer and fires lifecycle hooks on observers.
 Signals only — no data is passed, no stores are touched here.
 """
 
-from core.ironframe.ironframe import Tensor
+from ironframe.ironframe import Tensor
 
 
 class WrappedLayer:

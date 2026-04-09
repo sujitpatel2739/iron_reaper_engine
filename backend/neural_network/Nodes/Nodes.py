@@ -7,7 +7,7 @@ All arithmetic ops delegate to ironframe functions (add, sub, mul, div, sqrt)
 so broadcasting and autograd are handled consistently in one place.
 
 _state stores whatever the backward pass needs — inputs, masks, split indices.
-Every node accepts node_id: int and name: str and passes them to Node.__init__.
+Every node accepts node_id: Any and name: str and passes them to Node.__init__.
 """
 
 import numpy as np
@@ -15,9 +15,8 @@ from typing import Callable, List, Optional, Any
 
 from ironframe.ironframe import Tensor, sqrt, split, rangeclip, concate
 from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
-from ConditionRegistry import Condition
-from Node import Node
-
+from registries.ConditionRegistry import Condition
+from .Node import Node
 
 # ---------------------------------------------------------------------------
 # Arithmetic nodes
@@ -34,7 +33,7 @@ class AddNode(Node):
     gradient back to the original shape before returning it to that input.
     """
 
-    def __init__(self, node_id: int, name: str = "", axis: Optional[int] = None):
+    def __init__(self, node_id: Any, name: str = "", axis: Optional[int] = None):
         super().__init__(node_id, name)
         self.axis = axis
 
@@ -68,7 +67,7 @@ class SubNode(Node):
     Both are _revbroadcast'd back to their original shapes.
     """
 
-    def __init__(self, node_id: int, name: str = ""):
+    def __init__(self, node_id: Any, name: str = ""):
         super().__init__(node_id, name)
 
     def _forward(self, *inputs: Tensor) -> Tensor:
@@ -96,7 +95,7 @@ class MulNode(Node):
     _revbroadcast collapses the result back to each input's original shape.
     """
 
-    def __init__(self, node_id: int, name: str = ""):
+    def __init__(self, node_id: Any, name: str = ""):
         super().__init__(node_id, name)
 
     def _forward(self, *inputs: Tensor) -> Tensor:
@@ -125,7 +124,7 @@ class DivNode(Node):
     dL/dt2 = -grad * t1 / t2^2
     """
 
-    def __init__(self, node_id: int, name: str = ""):
+    def __init__(self, node_id: Any, name: str = ""):
         super().__init__(node_id, name)
 
     def _forward(self, *inputs: Tensor) -> Tensor:
@@ -152,7 +151,7 @@ class SqNode(Node):
     dL/dt = grad * 2 * t
     """
 
-    def __init__(self, node_id: int, name: str = ""):
+    def __init__(self, node_id: Any, name: str = ""):
         super().__init__(node_id, name)
 
     def _forward(self, *inputs: Tensor) -> Tensor:
@@ -184,7 +183,7 @@ class NegNode(Node):
     dL/dt = -grad
     """
 
-    def __init__(self, node_id: int, name: str = ""):
+    def __init__(self, node_id: Any, name: str = ""):
         super().__init__(node_id, name)
 
     def _forward(self, *inputs: Tensor) -> Tensor:
@@ -213,7 +212,7 @@ class SqrtNode(Node):
     Delegates to ironframe sqrt for consistency.
     """
 
-    def __init__(self, node_id: int, name: str = ""):
+    def __init__(self, node_id: Any, name: str = ""):
         super().__init__(node_id, name)
 
     def _forward(self, *inputs: Tensor) -> Tensor:
@@ -241,7 +240,7 @@ class SqrtNode(Node):
 #     dL/dt = grad * scalar
 #     """
 
-#     def __init__(self, node_id: int, scalar: float, name: str = ""):
+#     def __init__(self, node_id: Any, scalar: float, name: str = ""):
 #         super().__init__(node_id, name)
 #         self.scalar = scalar
 
@@ -268,7 +267,7 @@ class RangeclipNode(Node):
     Gradient passes through where input was in range, zero elsewhere.
     """
 
-    def __init__(self, node_id: int, min_val: float, max_val: float, name: str = ""):
+    def __init__(self, node_id: Any, min_val: float, max_val: float, name: str = ""):
         super().__init__(node_id, name)
         self.min_val = min_val
         self.max_val = max_val
@@ -300,7 +299,7 @@ class ConcatNode(Node):
     Split the gradient along the same axis using the input sizes.
     """
 
-    def __init__(self, node_id: int, axis: int = 1, name: str = ""):
+    def __init__(self, node_id: Any, axis: int = 1, name: str = ""):
         super().__init__(node_id, name)
         self.axis = axis
 
@@ -331,7 +330,7 @@ class SplitNode(Node):
     Concatenate incoming gradient chunks along the split axis.
     """
 
-    def __init__(self, node_id: int, n_splits: int, axis: int = 0, name: str = ""):
+    def __init__(self, node_id: Any, n_splits: int, axis: int = 0, name: str = ""):
         super().__init__(node_id, name)
         self.n_splits = n_splits
         self.axis     = axis
@@ -340,7 +339,7 @@ class SplitNode(Node):
         self._require_n_inputs(inputs, 1)
         out = split(self.n_splits, self.axis)
         self._state['out'] = out
-        # self._write(SLOT_OUTPUT, out_chunks)
+        self._write(SLOT_OUTPUT, out)
         return out # List of splited Tensors
 
     def _backward(self, grads: List[Tensor]) -> List[Tensor]:
@@ -349,165 +348,4 @@ class SplitNode(Node):
         self._write(SLOT_GRAD_IN, grad_in)
         return grad_in # One grad_in Tensor
 
-# --------------------------------------------------------------------------
-# Condition node
-# ---------------------------------------------------------------------------
-
-class ConditionNode(Node):
-    """
-    Routes input through two paths based on an elementwise or scalar condition.
-
-    Parameters
-    ----------
-    node_id    : int
-    condition  : Condition  — a Condition from ConditionRegistry wrapping name + fn.
-                             fn receives `operand` and returns a boolean mask or bool.
-    path_true  : callable | None  — called with `input` when condition is True.
-                                    None = identity (input passes through unchanged).
-    path_false : callable | None  — called with `input` when condition is False.
-                                    None = identity (input passes through unchanged).
-    name       : str
-
-    Forward
-    -------
-    operand and input are kept separate intentionally:
-        operand — what the condition is evaluated on (can be anything)
-        input   — what gets routed through the paths (optional, can be None
-                  if the paths don't require tensor input)
-
-    Two cases:
-        Elementwise mask (Tensor or ndarray) — both paths run, outputs stitched
-                                               with np.where using the mask.
-        Scalar bool                          — only the matching path runs,
-                                               the other is never called.
-
-    Backward
-    --------
-    Elementwise: gradient is gated by the mask — each path receives only the
-                 gradient for the positions it was responsible for.
-    Scalar:      gradient flows only through the path that ran.
-                 If the path has no .backward(), gradient is returned as-is.
-    """
-
-    def __init__(
-        self,
-        node_id:    int,
-        condition:  Condition,
-        path_true:  Optional[Any] = None,
-        path_false: Optional[Any] = None,
-        name:       str = "",
-    ):
-        super().__init__(node_id, name)
-
-        if not isinstance(condition, Condition):
-            raise TypeError(
-                f"ConditionNode: condition must be a Condition instance from "
-                f"ConditionRegistry, got {type(condition).__name__}. "
-                f"Use ConditionRegistry.get('name') or ConditionRegistry.make('name', fn)."
-            )
-
-        self.condition  = condition
-        self.path_true  = path_true
-        self.path_false = path_false
-
-    # -- helpers -------------------------------------------------------------
-
-    def _run_path(self, path: Optional[Any], input: Any) -> Any:
-        """Call a path if it exists, otherwise return input unchanged."""
-        if path is None:
-            return input
-        return path(input)
-
-    def _is_elementwise(self, mask: Any) -> bool:
-        """True if mask is an array-like (elementwise), False if scalar bool."""
-        return isinstance(mask, (np.ndarray, Tensor))
-
-    def _mask_data(self, mask: Any) -> np.ndarray:
-        """Always return a plain numpy boolean array from the mask."""
-        if isinstance(mask, Tensor):
-            return mask.data.astype(bool)
-        if isinstance(mask, np.ndarray):
-            return mask.astype(bool)
-        # scalar bool — wrap into a 0-d array for uniform handling
-        return np.array(mask, dtype=bool)
-
-    # -- forward -------------------------------------------------------------
-
-    def _forward(self, operand: Any, input: Any = None) -> Any:
-        """
-        Parameters
-        ----------
-        operand : Any   — value the condition is evaluated on
-        input   : Any   — value passed to the paths (can be None)
-        """
-        mask      = self.condition(operand)
-        mask_data = self._mask_data(mask)
-
-        self._state['mask']    = mask_data
-        self._state['input']   = input
-        self._state['operand'] = operand
-
-        if self._is_elementwise(mask):
-            # Both paths run — outputs stitched elementwise
-            out_true  = self._run_path(self.path_true,  input)
-            out_false = self._run_path(self.path_false, input)
-
-            self._state['out_true']  = out_true
-            self._state['out_false'] = out_false
-
-            # Extract raw data for np.where — handle Tensor or plain array
-            data_true  = out_true.data  if isinstance(out_true,  Tensor) else np.asarray(out_true)
-            data_false = out_false.data if isinstance(out_false, Tensor) else np.asarray(out_false)
-
-            result_data = np.where(mask_data, data_true, data_false)
-            requires_grad = (
-                (isinstance(out_true,  Tensor) and out_true.requires_grad)  or
-                (isinstance(out_false, Tensor) and out_false.requires_grad)
-            )
-            result = self._wrap(result_data, requires_grad)
-
-        else:
-            # Scalar condition — only one path runs
-            if mask_data.item():
-                result = self._run_path(self.path_true,  input)
-                self._state['bool'] = 'true'
-            else:
-                result = self._run_path(self.path_false, input)
-                self._state['bool'] = 'false'
-
-        self._state['out'] = result
-        self._write(SLOT_OUTPUT, result)
-        return result
-
-    # -- backward ------------------------------------------------------------
-
-    def _backward(self, grad: Tensor) -> List[Tensor]:
-        mask_data = self._state['mask']
-
-        if self._is_elementwise(mask_data) or mask_data.ndim > 0:
-            # Elementwise case — gate gradient by mask, route to each path
-            grad_true_data  = np.where(mask_data,  grad.data, 0.0)
-            grad_false_data = np.where(~mask_data, grad.data, 0.0)
-
-            grad_true  = self._wrap(grad_true_data,  grad.requires_grad)
-            grad_false = self._wrap(grad_false_data, grad.requires_grad)
-
-            # Propagate through each path if it supports backward
-            if self.path_true is not None and hasattr(self.path_true, 'backward'):
-                self.path_true.backward(grad_true)
-
-            if self.path_false is not None and hasattr(self.path_false, 'backward'):
-                self.path_false.backward(grad_false)
-
-            # Return gated grads — one for operand (no grad), one for input
-            return [self._wrap(np.zeros_like(mask_data, dtype=np.float32), False), grad]
-
-        else:
-            # Scalar case — gradient flows only through the path that ran
-            taken = self._state.get('taken', 'true')
-            path  = self.path_true if taken == 'true' else self.path_false
-
-            if path is not None and hasattr(path, 'backward'):
-                path.backward(grad)
-
-            return [self._wrap(np.array(0.0), False), grad]
+        

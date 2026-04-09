@@ -1,5 +1,5 @@
 from Layers.Layer import Layer, Linear, Relu, LayerNorm
-from core.ironframe.ironframe import add
+from ironframe.ironframe import add
 
 class ResBlock(Layer):
     def __init__(self, layer_id, in_features, out_features, alpha, lnorm_mode='post'):
