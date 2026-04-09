@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from neural_network.Layers.Layer import Layer as BaseLayer
 from neural_network.Layers.WrappedLayer import WrappedLayer
-from execution.registry import build_layer
+from backend.registries.registry import build_layer
 
 
 # ---------------------------------------------------------------------------

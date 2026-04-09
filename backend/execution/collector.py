@@ -16,7 +16,6 @@ import cache.CacheStore as CacheStore
 from cache.CacheStore import (
     SLOT_INPUT, SLOT_OUTPUT,
     SLOT_GRAD_OUT, SLOT_GRAD_IN,
-    SLOT_RESIDUAL, SLOT_SHORTCUT,
 )
 
 
@@ -38,8 +37,6 @@ def collect(layer_id_int: int) -> Dict[str, Any]:
     out   = _np(SLOT_OUTPUT)
     g_out = _np(SLOT_GRAD_OUT)
     g_in  = _np(SLOT_GRAD_IN)
-    res   = _np(SLOT_RESIDUAL)
-    short = _np(SLOT_SHORTCUT)
 
     if inp  is not None:
         metrics["input_shape"]      = list(inp.shape)
@@ -55,11 +52,5 @@ def collect(layer_id_int: int) -> Dict[str, Any]:
 
     if g_in  is not None:
         metrics["grad_in_norm"]     = float(np.linalg.norm(g_in))
-
-    if res   is not None:
-        metrics["residual_energy"]  = float(np.mean(res ** 2))
-
-    if short is not None:
-        metrics["shortcut_energy"]  = float(np.mean(short ** 2))
 
     return metrics
