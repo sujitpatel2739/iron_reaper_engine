@@ -16,8 +16,6 @@ SLOT_INPUT    = "input"
 SLOT_OUTPUT   = "output"
 SLOT_GRAD_OUT = "grad_out"
 SLOT_GRAD_IN  = "grad_in"
-SLOT_RESIDUAL = "residual"
-SLOT_SHORTCUT = "shortcut"
 
 _store: dict[int, dict[str, Any]] = {}
 
