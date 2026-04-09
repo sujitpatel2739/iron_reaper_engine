@@ -1,0 +1,33 @@
+X:.
+│   package-lock.json
+│   package.json
+│   
+├───public
+│       index.html
+│       
+└───src
+    │   App.jsx
+    │   index.js
+    │   
+    ├───api
+    │       api.js
+    │       
+    ├───components
+    |       Inputlayernode.jsx
+    │       Graphcanvas.jsx
+    │       Layernode.jsx
+    │       Metricspanel.jsx
+    │       Observerconfig.jsx
+    │       Operationnode.jsx
+    │       Sidepanel.jsx
+    │       Stepcontrols.jsx
+    │       Toolbar.jsx
+    │       
+    ├───hooks
+    │       Usewebsocket.js
+    │       
+    ├───store
+    │       Usegraphstore.js
+    │       
+    └───styles
+            global.css
