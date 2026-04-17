@@ -1,0 +1,56 @@
+X:.
+│   .gitignore
+│   backend structure.txt
+│   engine.py
+│   main.py
+│   package-lock.json
+│   README.md
+│   requirements.txt
+│   test_model.py
+│   
+├───cache
+│       CacheStore.py
+│       
+├───diag
+│   │   MetricStore.py
+│   │   
+│   └───Profiles
+│           Profiles.py
+│
+├───execution
+│       collector.py
+│       events.py
+│       planner.py
+│       step_engine.py
+│       
+├───ironframe
+│       ironframe.py
+│       
+├───logger
+│       Logger.py
+│       
+├───models
+│       models.py
+│       
+├───neural_network
+│   ├───Layers
+│   │       InputLayer.py
+│   │       Layer.py
+│   │       ResNet.py
+│   │       WrappedLayer.py
+│   │       
+│   └───Nodes
+│           ConditionNode.py
+│           LoopNode.py
+│           Node.py
+│           Nodes.py
+│
+├───Observers
+│       Observers.py
+│
+├───registries
+│       ConditionRegistry.py      
+│       registry.py
+│
+└───validation
+        validate_network.py
