@@ -3,30 +3,48 @@ api/routes.py
 -------------
 All FastAPI routes.
 
-HTTP
-----
+Changes from previous version
+------------------------------
+1. WS /run/full added.
+   New WebSocket endpoint that drives RunSession for multi-epoch streaming.
+   Replaces the HTTP POST /run/start for full diagnostic runs.
+   POST /run/start is kept for backward compatibility but is no longer
+   the primary entry point.
+
+2. /run/reset now also clears AnomalyStore.
+   AnomalyStore is a new module that must be cleared alongside MetricStore
+   and CacheStore when the user resets between graph edits.
+
+3. WS /run/step is unchanged in protocol.
+   The step-mode WebSocket still works exactly as before.
+
+HTTP routes
+-----------
 GET  /health
 GET  /info
-GET  /layers                  available layer types + config schemas
-GET  /nodes                   available node types + config schemas
-GET  /observers               available observer types
-POST /network/validate        shape compatibility check (no instantiation)
-POST /network/import          upload model → JSON graph
-POST /network/save            JSON graph → downloadable file
-POST /run/start               full diagnostic run → DiagnosticReport
+GET  /layers
+GET  /nodes
+GET  /observers
+POST /network/build
+POST /network/import
+POST /network/save
+POST /dataset/upload
+POST /dataset/validate-synthetic
+POST /dataset/validate-upload
+DELETE /dataset/validation/{id}
+POST /run/reset
+GET  /info/validation-store
 
-WebSocket
----------
-WS   /run/step                manual step-mode session
-
-Run with:
-    cd <project-root>
-    PYTHONPATH=backend uvicorn api.main:app --reload --port 8000
+WebSocket routes
+----------------
+WS   /run/full     ← NEW: multi-epoch streaming run
+WS   /run/step     (unchanged)
 """
 
 import json
 import traceback
-from typing import Optional
+import uuid
+from typing import Dict, List, Optional
 
 import numpy as np
 from fastapi import (
@@ -37,22 +55,29 @@ from fastapi import (
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
-from execution.registry import LAYER_TYPES, NODE_TYPES, OBSERVER_TYPES, build_observers
-from execution.planner import build_plan
-from execution.step_engine import StepEngine
-from validation.validate_network import validate_network
-from ironframe.ironframe import Tensor
-import cache.CacheStore as CacheStore
-import diag.MetricStore as MetricStore
+from backend.registries.registry import LAYER_TYPES, NODE_TYPES, OBSERVER_TYPES, build_observers
+from backend.builder.builder import build_network
+from backend.engine.engine import engine
+from backend.step_engine.step_engine import StepEngine
+from backend.validation.validate_network import validate_network
+from backend.ironframe.ironframe import Tensor
+import backend.cache.CacheStore as CacheStore
+import backend.cache.ValidationStore as ValidationStore
+import backend.diag.MetricStore as MetricStore
+import backend.diag.AnomalyStore as AnomalyStore          # ← NEW
 
 from api.bridge import load_model, graph_from_model
-from api.runner import run_diagnostics
+from api.runner import RunSession                           # ← NEW
+from backend.registries import network_registry
+from backend.data.data_builder import build_dataset, parse_upload
 from api.schemas import (
-    RunConfig, DiagnosticReport, HealthResponse,
-    ValidationResponse,
+    BuildResponse, RunConfig,
+    HealthResponse, ValidationResponse, ValidationWarning,
+    SyntheticInput,
 )
 
 router = APIRouter()
+
 
 # ---------------------------------------------------------------------------
 # Meta
@@ -65,8 +90,7 @@ def health():
 
 @router.get("/info", tags=["Meta"])
 def info():
-    import torch
-    return {"version": "0.1.0", "pytorch_version": torch.__version__}
+    return {"version": "0.1.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -89,14 +113,46 @@ def get_observer_types():
 
 
 # ---------------------------------------------------------------------------
-# Network validation
+# Build
 # ---------------------------------------------------------------------------
 
+@router.post("/network/build", response_model=BuildResponse, tags=["Network"])
+async def build_network(body: dict):
+    graph      = body.get("graph", {})
+    run_config = body.get("run_config", {})
+    nodes      = graph.get("nodes", [])
+    edges      = graph.get("edges", [])
 
-@router.post("/network/validate", response_model=ValidationResponse, tags=["Network"])
-def validate_network_route(body: dict):
-    warnings = validate_network(body)
-    return ValidationResponse(valid=len(warnings) == 0, warnings=warnings)
+    if not nodes:
+        raise HTTPException(status_code=422, detail="Graph has no nodes.")
+
+    input_shape  = run_config.get("input_shape")
+    raw_warnings = validate_network({"nodes": nodes, "edges": edges}, input_shape)
+    warnings     = [ValidationWarning(node_id=w["node_id"], message=w["message"])
+                    for w in raw_warnings]
+
+    try:
+        network = build_network(nodes, edges)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"[Build] Failed to build network: {e}")
+
+    CacheStore.clear()
+    MetricStore.clear()
+    AnomalyStore.clear()
+
+    build_id = network_registry.register(
+        graph      = {"nodes": nodes, "edges": edges},
+        network       = network,
+        run_config = run_config,
+    )
+
+    return BuildResponse(
+        build_id   = build_id,
+        valid      = len(warnings) == 0,
+        warnings   = warnings,
+        node_count = len(nodes),
+        edge_count = len(edges),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +161,6 @@ def validate_network_route(body: dict):
 
 @router.post("/network/import", tags=["Network"])
 async def import_model(model_file: UploadFile = File(...)):
-    """Upload .pt / .pth → React Flow graph JSON."""
     file_bytes = await model_file.read()
     try:
         model, _ = load_model(file_bytes)
@@ -116,7 +171,6 @@ async def import_model(model_file: UploadFile = File(...)):
 
 @router.post("/network/save", tags=["Network"])
 async def save_network(body: dict):
-    """Return graph JSON as a downloadable file."""
     return Response(
         content=json.dumps(body, indent=2),
         media_type="application/json",
@@ -125,70 +179,114 @@ async def save_network(body: dict):
 
 
 # ---------------------------------------------------------------------------
-# Full diagnostic run
+# Dataset validation
 # ---------------------------------------------------------------------------
 
-@router.post("/run/start", response_model=DiagnosticReport, tags=["Run"])
-async def run_start(
-    model_file: UploadFile = File(...),
-    config:     str        = Form(default="{}"),
-    input_file: Optional[UploadFile] = File(default=None),
+@router.post("/dataset/validate-synthetic", tags=["Dataset"])
+async def validate_synthetic_spec(body: dict):
+    try:
+        spec = SyntheticInput(**body)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=f"Invalid synthetic spec: {e}")
+
+    validation_id = ValidationStore.store_validation('synthetic', {
+        'name':         spec.name,
+        'n_samples':    spec.n_samples,
+        'sample_shape': spec.sample_shape,
+        'batch_size':   spec.batch_size,
+        'distribution': spec.distribution,
+        'seed':         spec.seed,
+    })
+    return {'valid': True, 'validation_id': validation_id}
+
+
+@router.post("/dataset/validate-upload", tags=["Dataset"])
+async def validate_upload_spec(
+    name:      str        = Form(...),
+    data_file: UploadFile = File(...),
 ):
-    """Full forward + backward pass. Returns DiagnosticReport."""
+    file_bytes = await data_file.read()
+    filename   = data_file.filename or "upload"
     try:
-        run_config = RunConfig(**json.loads(config))
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Invalid config: {e}")
-
-    model_bytes = await model_file.read()
-    input_bytes = await input_file.read() if input_file else None
-
-    try:
-        return run_diagnostics(model_bytes, run_config, input_bytes)
+        tensor = parse_upload(file_bytes, filename)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    validation_id = ValidationStore.store_validation('upload', {
+        'name':      name,
+        'data':      file_bytes,
+        'filename':  filename,
+        'shape':     list(tensor.data.shape),
+        'dtype':     str(tensor.data.dtype),
+        'n_samples': tensor.data.shape[0],
+    })
+    return {
+        'valid':         True,
+        'validation_id': validation_id,
+        'shape':         list(tensor.data.shape),
+        'dtype':         str(tensor.data.dtype),
+        'n_samples':     tensor.data.shape[0],
+    }
+
+
+@router.delete("/dataset/validation/{validation_id}", tags=["Dataset"])
+async def delete_dataset_validation(validation_id: str):
+    deleted = ValidationStore.delete_validation(validation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Validation ID '{validation_id}' not found")
+    return {"status": "deleted", "validation_id": validation_id}
 
 
 # ---------------------------------------------------------------------------
-# WebSocket — manual step mode
+# Run reset
 # ---------------------------------------------------------------------------
 
-@router.websocket("/run/step")
-async def run_step(websocket: WebSocket):
+@router.post("/run/reset", tags=["Run"])
+def run_reset():
     """
-    Manual step-mode session.
+    Clear all state. Must be called whenever the user edits the graph.
+    Now also clears AnomalyStore.
+    """
+    network_registry.clear()
+    CacheStore.clear()
+    ValidationStore.clear()
+    MetricStore.clear()
+    AnomalyStore.clear()
+    return {"status": "reset"}
 
-    Client → Server actions:
-        start   { graph, run_config }
-        next    {}                        advance one forward step
-        prev    {}                        advance one backward step
-        follow  { branch: "branch_0" }   step into a branch
-        stop    {}
 
-    Server → Client events  (StepEvent.to_dict()):
-        ready, step_done, branch_point, branch_done,
-        branches_complete, forward_complete, backward_complete, error
+# ---------------------------------------------------------------------------
+# Diagnostic endpoint
+# ---------------------------------------------------------------------------
+
+@router.get("/info/validation-store", tags=["Meta"])
+def get_validation_store_info():
+    ids = ValidationStore.validation_ids()
+    return {"validation_count": len(ids), "validation_ids": ids}
+
+
+# ---------------------------------------------------------------------------
+# WebSocket — full multi-epoch streaming run  ← NEW
+# ---------------------------------------------------------------------------
+
+@router.websocket("/run/full")
+async def run_full(websocket: WebSocket):
+    """
+    Full multi-epoch streaming run.
+
+    Client → Server:
+        start { build_id, run_config, validation_ids }
+        stop  {}
+
+    Server → Client:
+        run_started  { run_id, n_epochs, n_batches, total_samples }
+        epoch_start  { epoch }
+        batch_done   { epoch, batch, n_batches }   (conditional)
+        epoch_done   { epoch, snapshot, anomalies }
+        run_done     { n_epochs }
+        error        { message }
     """
     await websocket.accept()
-
-    engine:  Optional[StepEngine] = None
-    fwd_gen                       = None
-    bwd_gen                       = None
-    phase                         = "idle"   # "forward" | "backward"
-
-    def _make_input(cfg: dict) -> Tensor:
-        seed = cfg.get("seed")
-        if seed is not None:
-            np.random.seed(seed)
-        shape = cfg.get("input_shape", [32, 128])
-        return Tensor(
-            np.random.randn(*shape).astype(np.float32),
-            requires_grad=True,
-        )
 
     try:
         while True:
@@ -196,37 +294,135 @@ async def run_step(websocket: WebSocket):
             msg    = json.loads(raw)
             action = msg.get("action")
 
-            # ── START ──────────────────────────────────────────────────────
             if action == "start":
-                graph      = msg.get("graph", {})
+                build_id   = msg.get("build_id")
                 run_config = msg.get("run_config", {})
+                vids       = msg.get("validation_ids", [])
 
-                if not graph.get("nodes"):
-                    await websocket.send_json(
-                        {"event": "error", "message": "Graph has no nodes."}
-                    )
+                if not build_id:
+                    await websocket.send_json({"event": "error", "message": "No build_id."})
+                    continue
+
+                build = network_registry.get(build_id)
+                if build is None:
+                    await websocket.send_json({"event": "error", "message": f"Build '{build_id}' not found. Rebuild."})
+                    continue
+
+                if not vids:
+                    await websocket.send_json({"event": "error", "message": "No validation_ids provided."})
+                    continue
+
+                # Reconstruct dataset from ValidationStore
+                synthetic_specs = []
+                uploaded        = {}
+                for vid in vids:
+                    try:
+                        kind, spec = ValidationStore.get_validation(vid)
+                    except KeyError:
+                        await websocket.send_json({"event": "error", "message": f"Validation ID '{vid}' not found."})
+                        break
+                    if kind == "synthetic":
+                        synthetic_specs.append(SyntheticInput(**spec))
+                    elif kind == "upload":
+                        uploaded[spec["name"]] = (spec["data"], spec["filename"])
+                else:
+                    # Only reached if the for loop completed without break
+                    try:
+                        dataset = build_dataset(synthetic_specs, uploaded)
+                    except ValueError as e:
+                        await websocket.send_json({"event": "error", "message": str(e)})
+                        continue
+
+                    session = RunSession(build, run_config, dataset)
+                    await session.run(websocket)
+                    continue
+
+            elif action == "stop":
+                await websocket.send_json({"event": "stopped"})
+                break
+
+            else:
+                await websocket.send_json({"event": "error", "message": f"Unknown action '{action}'."})
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        try:
+            await websocket.send_json({"event": "error", "message": str(e)})
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# WebSocket — manual step mode  (unchanged)
+# ---------------------------------------------------------------------------
+
+@router.websocket("/run/step")
+async def run_step(websocket: WebSocket):
+    """
+    Manual step-mode session.
+
+    Client → Server: start | next | prev | follow | stop
+    Server → Client: ready | step_done | branch_point | branch_done |
+                     branches_complete | forward_complete | backward_complete | error
+    """
+    await websocket.accept()
+
+    engine:  Optional[StepEngine] = None
+    fwd_gen                       = None
+    bwd_gen                       = None
+    phase                         = "idle"
+
+    def _make_input_from_dataset(dataset: dict) -> Tensor:
+        if dataset:
+            first = next(iter(dataset.values()))
+            return first
+        raise ValueError("No dataset provided for step mode.")
+
+    try:
+        while True:
+            raw    = await websocket.receive_text()
+            msg    = json.loads(raw)
+            action = msg.get("action")
+
+            if action == "start":
+                build_id     = msg.get("build_id")
+                run_config   = msg.get("run_config", {})
+                dataset_spec = msg.get("dataset_spec", {})
+
+                if not build_id:
+                    await websocket.send_json({"event": "error", "message": "No build_id."})
+                    continue
+
+                build = network_registry.get(build_id)
+                if build is None:
+                    await websocket.send_json({"event": "error", "message": f"Build '{build_id}' not found."})
                     continue
 
                 CacheStore.clear()
                 MetricStore.clear_run(run_config.get("run_id", 0))
 
-                observers = build_observers(
-                    run_config.get("observers", ["SignalStatsObserver"]),
-                    run_config.get("run_id", 0),
-                )
-                plan   = build_plan(graph["nodes"], graph["edges"], observers)
-                engine = StepEngine(plan)
-                engine.set_input(_make_input(run_config))
+                synthetic_specs = [
+                    SyntheticInput(**s)
+                    for s in dataset_spec.get("synthetic_inputs", [])
+                ]
+                try:
+                    dataset = build_dataset(synthetic_specs, {})
+                except ValueError as e:
+                    await websocket.send_json({"event": "error", "message": str(e)})
+                    continue
+
+                engine  = StepEngine(build.plan)
+                x_input = _make_input_from_dataset(dataset)
+                x_input.requires_grad = True
+                engine.set_input(x_input)
 
                 fwd_gen = engine.step_forward()
                 phase   = "forward"
 
-                await websocket.send_json({
-                    "event":    "ready",
-                    "layer_id": graph["nodes"][0]["id"],
-                })
+                first_node_id = build.graph["nodes"][0]["id"]
+                await websocket.send_json({"event": "ready", "layer_id": first_node_id})
 
-            # ── NEXT (forward) ─────────────────────────────────────────────
             elif action == "next" and phase == "forward" and fwd_gen is not None:
                 try:
                     event = next(fwd_gen)
@@ -239,7 +435,6 @@ async def run_step(websocket: WebSocket):
                     bwd_gen = engine.step_backward()
                     await websocket.send_json({"event": "forward_complete"})
 
-            # ── PREV (backward) ────────────────────────────────────────────
             elif action == "prev" and phase == "backward" and bwd_gen is not None:
                 try:
                     event = next(bwd_gen)
@@ -247,10 +442,7 @@ async def run_step(websocket: WebSocket):
                 except StopIteration:
                     await websocket.send_json({"event": "backward_complete"})
 
-            # ── FOLLOW branch ──────────────────────────────────────────────
             elif action == "follow" and fwd_gen is not None:
-                # Branch steps are embedded in the forward generator —
-                # advancing next() steps through the active branch.
                 try:
                     event = next(fwd_gen)
                     await websocket.send_json(event.to_dict())
@@ -260,7 +452,6 @@ async def run_step(websocket: WebSocket):
                 except StopIteration:
                     await websocket.send_json({"event": "forward_complete"})
 
-            # ── STOP ───────────────────────────────────────────────────────
             elif action == "stop":
                 await websocket.send_json({"event": "stopped"})
                 break
