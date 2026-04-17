@@ -2,31 +2,88 @@
 api/schemas.py
 --------------
 Pydantic request / response models for the FastAPI layer.
-These are the wire-format contracts between frontend and backend.
-Nothing in backend/ imports from here — only api/ files do.
 """
 
-from pydantic import BaseModel
-from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, field_validator
+from typing import Any, Dict, List, Literal, Optional
 
 
 # ---------------------------------------------------------------------------
-# Request
+# Dataset input specs
+# ---------------------------------------------------------------------------
+
+class UploadedInput(BaseModel):
+    """
+    One named input slot backed by an uploaded file.
+    The actual file bytes arrive as a multipart upload alongside this spec.
+    max 100 samples enforced by the backend.
+    """
+    name:       str                   # matches an InputLayer port label
+    file_key:   str                   # key used in the multipart form
+
+
+class SyntheticInput(BaseModel):
+    """
+    One named input slot generated synthetically by the backend.
+    """
+    name:             str
+    n_samples:        int   = 32      # max 100
+    sample_shape:     List[int]       # shape of a single sample, e.g. [128]
+    batch_size:       int   = 32
+    distribution:     Literal["normal", "uniform", "zeros", "ones"] = "normal"
+    seed:             Optional[int]   = 42
+
+    @field_validator("n_samples")
+    @classmethod
+    def cap_samples(cls, v):
+        if v > 100:
+            raise ValueError("n_samples must be ≤ 100")
+        return v
+
+
+class DatasetSpec(BaseModel):
+    """
+    Full dataset spec attached to a run.
+    At least one of uploaded_inputs or synthetic_inputs must be non-empty.
+    """
+    uploaded_inputs:  List[UploadedInput]  = []
+    synthetic_inputs: List[SyntheticInput] = []
+
+
+# ---------------------------------------------------------------------------
+# Build request / response
+# ---------------------------------------------------------------------------
+
+class BuildRequest(BaseModel):
+    graph:       dict          # { nodes, edges }
+    run_config:  "RunConfig"
+
+
+class BuildResponse(BaseModel):
+    build_id:   str
+    valid:      bool
+    warnings:   List["ValidationWarning"] = []
+    node_count: int
+    edge_count: int
+
+
+# ---------------------------------------------------------------------------
+# Run config
 # ---------------------------------------------------------------------------
 
 class RunConfig(BaseModel):
-    run_id:      int         = 0
-    input_shape: List[int]   = [32, 128]
-    observers:   List[str]   = [
+    run_id:     int       = 0
+    observers:  List[str] = [
         "SignalStatsObserver",
         "SignalShapeObserver",
         "ResidualEnergyObserver",
     ]
-    profiles:    List[str]   = [
+    profiles:   List[str] = [
         "SignalStatsProfile",
         "PathDominanceProfile",
     ]
-    seed:        Optional[int] = 42
+    # dataset is sent separately as multipart — only spec refs here
+    dataset:    Optional[DatasetSpec] = None
 
 
 # ---------------------------------------------------------------------------
@@ -65,11 +122,12 @@ class PathDominanceResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Top-level diagnostic report
+# Diagnostic report
 # ---------------------------------------------------------------------------
 
 class DiagnosticReport(BaseModel):
     run_id:         int
+    build_id:       str
     model_name:     str
     total_params:   int
     layers:         List[LayerInfo]
@@ -96,3 +154,8 @@ class ValidationWarning(BaseModel):
 class ValidationResponse(BaseModel):
     valid:    bool
     warnings: List[ValidationWarning] = []
+
+
+# Resolve forward refs
+BuildResponse.model_rebuild()
+BuildRequest.model_rebuild()
