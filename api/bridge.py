@@ -28,8 +28,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
-from ironframe.ironframe import Tensor
-from Observers.Observers import LayerObserver
+from backend.ironframe.ironframe import Tensor
+from backend.Observers.Observers import LayerObserver
 
 
 # ---------------------------------------------------------------------------
