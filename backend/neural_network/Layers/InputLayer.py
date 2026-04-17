@@ -1,26 +1,21 @@
 """
 InputLayer.py
----------------
-Each entry in `inputs` is a label string identifying one input tensor.
-Labels default to positional names ('input_0', 'input_1', ...) if not
-provided. They are editable in the frontend.
+-------------
+Entry point of a neural network graph.
 
-Each input can feed any number of downstream edges — the InputLayer does
-not control fan-out. The graph topology (edges) determines that.
+Each port label identifies one named input tensor. Labels are editable
+in the frontend. The InputLayer stores each input in CacheStore keyed
+by label so downstream layers can read them by name.
 """
 
 import numpy as np
 from typing import Any, Dict, List, Optional
 
-from Layer import Layer
+from neural_network.Layers.Layer import Layer
 from ironframe.ironframe import Tensor
 import cache.CacheStore as CacheStore
-from cache.CacheStore import SLOT_INPUT, SLOT_OUTPUT, SLOT_GRAD_OUT, SLOT_GRAD_IN
+from cache.CacheStore import SLOT_OUTPUT
 
-
-# ---------------------------------------------------------------------------
-# InputLayer
-# ---------------------------------------------------------------------------
 
 class InputLayer(Layer):
     """
@@ -28,14 +23,12 @@ class InputLayer(Layer):
 
     Parameters
     ----------
-    layer_id : int
-        Unique integer ID. Assigned by the user, must not clash with
-        other layer/node IDs in the same network.
+    layer_id : int | str
+        Unique ID. Must not clash with other layer/node IDs.
 
     inputs : List[str] | None
-        Labels for each input port. If None, defaults to
-        ['input_0', 'input_1', ...] — but since the default case is
-        a single input, the default list is just ['input_0'].
+        Labels for each input port.
+        Defaults to ['input_0'] for the single-input case.
         Labels are editable in the frontend.
 
     name : str
@@ -45,114 +38,66 @@ class InputLayer(Layer):
     def __init__(
         self,
         layer_id: Any,
-        inputs: list[str],
+        inputs:   Optional[List[str]] = None,
         name:     str = 'inputlayer',
     ):
+        # InputLayer does not call Layer.__init__ because it does not use
+        # the detach machinery or _state dict in the same way.
         self.id         = layer_id
         self.name       = name
         self.type       = 'inputlayer'
-        self._state = {}
+        self._state     = {}
         self.parameters = {}
 
-        # Input labels — one per input port
-        # Default to ['input_0'] for the single-input case
+        # Port labels — at least one required
         self.inputs = inputs if inputs is not None else ['input_0']
 
         if len(self.inputs) == 0:
             raise ValueError(
-                f"InputLayer '{self.name}': must have at least one input label. "
-                f"Pass inputs=['name'] or leave as default."
+                f"InputLayer '{self.name}': must have at least one input label."
             )
-        
-        
+
+    # -- Forward / backward --------------------------------------------------
 
     def _forward(self, inputs: Dict[str, Tensor]) -> Dict[str, Tensor]:
         """
-        Store inputs in _state and CacheStore, return unchanged.
-        Missing keys are silently ignored — no validation by design.
+        Store each named input in CacheStore and return unchanged.
+        Missing port keys are silently ignored.
         """
-
         for label, tensor in inputs.items():
             CacheStore.write(self.id, f"{SLOT_OUTPUT}_{label}", tensor)
             self._state[label] = tensor
         return inputs
 
     def _backward(self, grad: Any) -> None:
-        """
-        Gradients arrive here and stop.
-        No parameters to update. No upstream to propagate to.
-        """
         return None
 
-    # -- Dynamic input management --------------------------------------------
+    # -- Port management -----------------------------------------------------
 
     def add_input(self, label: str) -> None:
-        """
-        Add a new input port with the given label.
-        Mirrors the frontend + button.
-
-        Raises
-        ------
-        ValueError if label already exists — labels must be unique.
-        """
         if label in self.inputs:
             raise ValueError(
-                f"InputLayer '{self.name}': label '{label}' already exists. "
-                f"Labels must be unique. Current labels: {self.inputs}"
+                f"InputLayer '{self.name}': label '{label}' already exists."
             )
         self.inputs.append(label)
 
     def remove_input(self, label: str) -> None:
-        """
-        Remove an input port by label.
-        Mirrors the frontend - button.
-
-        Raises
-        ------
-        ValueError if label not found.
-        ValueError if removing would leave zero inputs.
-        """
         if label not in self.inputs:
             raise ValueError(
-                f"InputLayer '{self.name}': label '{label}' not found. "
-                f"Current labels: {self.inputs}"
+                f"InputLayer '{self.name}': label '{label}' not found."
             )
         if len(self.inputs) == 1:
             raise ValueError(
-                f"InputLayer '{self.name}': cannot remove the last input. "
-                f"InputLayer must have at least one input port."
+                f"InputLayer '{self.name}': cannot remove the last input port."
             )
         self.inputs.remove(label)
 
     def rename_input(self, old_label: str, new_label: str) -> None:
-        """
-        Rename an input port label.
-        Mirrors frontend label editing.
-
-        Raises
-        ------
-        ValueError if old_label not found.
-        ValueError if new_label already exists.
-        """
         if old_label not in self.inputs:
-            raise ValueError(
-                f"InputLayer '{self.name}': label '{old_label}' not found. "
-                f"Current labels: {self.inputs}"
-            )
+            raise ValueError(f"InputLayer '{self.name}': '{old_label}' not found.")
         if new_label in self.inputs:
-            raise ValueError(
-                f"InputLayer '{self.name}': label '{new_label}' already exists. "
-                f"Labels must be unique."
-            )
-        idx = self.inputs.index(old_label)
-        self.inputs[idx] = new_label
-
-    # -- Repr ----------------------------------------------------------------
+            raise ValueError(f"InputLayer '{self.name}': '{new_label}' already exists.")
+        self.inputs[self.inputs.index(old_label)] = new_label
 
     def __repr__(self) -> str:
-        return (
-            f"InputLayer("
-            f"id={self.id}, "
-            f"name='{self.name}', "
-            f"inputs={self.inputs})"
-        )
+        return f"InputLayer(id={self.id}, name='{self.name}', inputs={self.inputs})"
