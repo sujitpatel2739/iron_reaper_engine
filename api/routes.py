@@ -59,6 +59,8 @@ from backend.registries.registry import LAYER_TYPES, NODE_TYPES, OBSERVER_TYPES,
 from backend.engine.engine import Engine
 # from backend.step_engine.step_engine import StepEngine
 from backend.validation.validate_network import validate_network
+from backend.builder.builder import build_network
+
 from backend.ironframe.ironframe import Tensor
 import backend.cache.CacheStore as CacheStore
 import backend.cache.ValidationStore as ValidationStore
@@ -116,7 +118,7 @@ def get_observer_types():
 # ---------------------------------------------------------------------------
 
 @router.post("/network/build", response_model=BuildResponse, tags=["Network"])
-async def build_network(body: dict):
+async def validate_build_network(body: dict):
     graph      = body.get("graph", {})
     run_config = body.get("run_config", {})
     nodes      = graph.get("nodes", [])
@@ -141,7 +143,7 @@ async def build_network(body: dict):
 
     build_id = network_registry.register(
         graph      = {"nodes": nodes, "edges": edges},
-        network       = network,
+        network       = network, # ExecutionPlan
         run_config = run_config,
     )
 

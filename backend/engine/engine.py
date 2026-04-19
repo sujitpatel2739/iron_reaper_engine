@@ -9,17 +9,19 @@ from typing import Dict, Generator, List, Optional
 from backend.registries.network_registry import NetworkBuild
 from ironframe.ironframe import Tensor
 from engine import collector
+from engine.events import StepEvent, EventKind
+from builder.builder import StepKind, ExecutionStep
 
 
 class Engine:
     """
-    Drives an ExecutionPlan forward and backward, yielding one StepEvent
+    Drives an Executionnetwork_build.network forward and backward, yielding one StepEvent
     per layer at each step.
 
     Usage
     -----
-        plan    = planner.build_plan(graph_nodes, graph_edges, observers)
-        engine  = StepEngine(plan)
+        network_build.network    = network_build.networkner.build_network_build.network(graph_nodes, graph_edges, observers)
+        engine  = StepEngine(network_build.network)
         engine.set_input(x_tensor)
 
         for event in engine.step_forward():
@@ -34,7 +36,7 @@ class Engine:
     def __init__(self, network_build: NetworkBuild, dataset: Dict[str, Tensor]):
         
         self._dataset = dataset
-        self.wrapped_network_build = network_build
+        self.network_build = network_build
 
     def _pick_input(self) -> Tensor:
         """Select the input tensor from the dataset (currently: first entry)."""
@@ -57,8 +59,12 @@ class Engine:
         if input is None:
             raise ValueError('Input not found.')
 
+        current = self._pick_input()
+        
+        steps = self.network_build.network.steps
+        
         for idx, step in enumerate(steps):
-            next_id = steps[idx + 1].node_id if idx + 1 < len(steps) else None
+            next_id = steps[idx + 1].component_id if idx + 1 < len(steps) else None
 
             if step.kind == StepKind.LAYER:
                 current, event = self._run_layer_forward(step, current, next_id)
@@ -69,10 +75,10 @@ class Engine:
             elif step.kind == StepKind.BRANCH_POINT:
                 yield StepEvent(
                     kind=EventKind.BRANCH_POINT,
-                    layer_id=step.node_id,
+                    layer_id=step.component_id,
                     branches=step.branch_ids,
                 )
-
+ 
                 branch_outputs: List[Tensor] = []
                 for b_idx, branch in enumerate(step.branches):
                     b_input = current
@@ -86,11 +92,11 @@ class Engine:
                     yield StepEvent(kind=EventKind.BRANCH_DONE, branch=step.branch_ids[b_idx])
 
                 # Merge branch outputs via element-wise addition
-                current = branch_outputs[0]
-                for extra in branch_outputs[1:]:
-                    current = current + extra
+                # current = branch_outputs[0]
+                # for extra in branch_outputs[1:]:
+                #     current = current + extra
 
-                yield StepEvent(kind=EventKind.BRANCHES_COMPLETE, layer_id=step.node_id)
+                yield StepEvent(kind=EventKind.BRANCHES_COMPLETE, layer_id=step.component_id)
 
             elif step.kind == StepKind.MERGE:
                 current, event = self._run_layer_forward(step, current, next_id)
@@ -115,7 +121,7 @@ class Engine:
             return
 
         grad    = Tensor(np.ones_like(self._output.data))
-        steps   = self.plan.steps
+        steps   = self.network_build.network.steps
 
         for step in reversed(steps):
             if step.kind == StepKind.LAYER:
@@ -127,7 +133,7 @@ class Engine:
             elif step.kind == StepKind.BRANCH_POINT:
                 yield StepEvent(
                     kind=EventKind.BRANCH_POINT,
-                    layer_id=step.node_id,
+                    layer_id=step.component_id,
                     branches=step.branch_ids,
                 )
 
@@ -142,7 +148,7 @@ class Engine:
                     b_id = step.branch_ids[len(step.branches) - 1 - b_idx]
                     yield StepEvent(kind=EventKind.BRANCH_DONE, branch=b_id)
 
-                yield StepEvent(kind=EventKind.BRANCHES_COMPLETE, layer_id=step.node_id)
+                yield StepEvent(kind=EventKind.BRANCHES_COMPLETE, layer_id=step.component_id)
 
             elif step.kind == StepKind.MERGE:
                 grad, event = self._run_layer_backward(step, grad)
@@ -163,19 +169,19 @@ class Engine:
         next_id: Optional[str] = None,
     ):
         try:
-            if isinstance(step.obj, WrappedLayer):
-                out = step.obj.forward(x)
+            if isinstance(step.comp, WrappedLayer):
+                out = step.comp.forward(x)
             else:
-                out = step.obj.forward(x)   # raw Node
+                out = step.comp.forward(x)   # raw Node
         except Exception as e:
-            return x, StepEvent(kind=EventKind.ERROR, layer_id=step.node_id, error=str(e))
+            return x, StepEvent(kind=EventKind.ERROR, layer_id=step.component_id, error=str(e))
 
-        layer_id_int = self.plan.id_to_int.get(step.node_id, 0)
+        layer_id_int = self.network_build.network.id_to_int.get(step.component_id, 0)
         metrics      = collector.collect(layer_id_int)
 
         return out, StepEvent(
             kind=EventKind.STEP_DONE,
-            layer_id=step.node_id,
+            layer_id=step.component_id,
             metrics=metrics,
             next_layer_id=next_id,
         )
@@ -185,20 +191,20 @@ class Engine:
         step: ExecutionStep,
         grad: Tensor,
     ):
-        if not isinstance(step.obj, WrappedLayer):
+        if not isinstance(step.comp, WrappedLayer):
             # Raw nodes don't participate in the backward observer pipeline
-            return grad, StepEvent(kind=EventKind.STEP_DONE, layer_id=step.node_id, metrics={})
+            return grad, StepEvent(kind=EventKind.STEP_DONE, layer_id=step.component_id, metrics={})
 
         try:
-            grad_in = step.obj.backward(grad)
+            grad_in = step.comp.backward(grad)
         except Exception as e:
-            return grad, StepEvent(kind=EventKind.ERROR, layer_id=step.node_id, error=str(e))
+            return grad, StepEvent(kind=EventKind.ERROR, layer_id=step.component_id, error=str(e))
 
-        layer_id_int = self.plan.id_to_int.get(step.node_id, 0)
+        layer_id_int = self.network_build.network.id_to_int.get(step.component_id, 0)
         metrics      = collector.collect(layer_id_int)
 
         return grad_in, StepEvent(
             kind=EventKind.STEP_DONE,
-            layer_id=step.node_id,
+            layer_id=step.component_id,
             metrics=metrics,
         )

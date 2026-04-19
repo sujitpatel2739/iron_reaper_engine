@@ -2,7 +2,7 @@
 planner.py
 ----------
 Converts a React Flow graph (nodes + edges) into an ordered
-ExecutionPlan — a list of ExecutionStep objects.
+ExecutionPlan — a list of ExecutionStep compects.
 
 Responsibilities
 ----------------
@@ -33,13 +33,14 @@ class StepKind(Enum):
     LAYER        = auto()   # single layer / node, one input → one output
     BRANCH_POINT = auto()   # fork: one input → multiple parallel sub-sequences
     MERGE        = auto()   # merge node: multiple inputs → one output
+    MERGE_BRANCH = auto()   # merge node that also has multiple outputs (e.g. residual connection)
 
 
 @dataclass
 class ExecutionStep:
     kind:     StepKind
     component_id: Optional[str] = None
-    obj: Any = None
+    comp: Any = None
     branches: List[List['ExecutionStep']] = field(default_factory=list)
     # branch_ids[i] is the human-readable id sent to the frontend for branches[i]
     branch_ids: List[str]                = field(default_factory=list)
@@ -67,7 +68,6 @@ def build_network(
     ----------
     graph_nodes : list of React Flow node dicts
     graph_edges : list of React Flow edge dicts
-    observers   : already-instantiated observer list (from registry.build_observers)
     """
     component_by_id  = {n["id"]: n for n in graph_nodes}
     out_edges, in_edges = _build_adjacency(graph_edges)
@@ -126,8 +126,8 @@ def _collect_branch(
     curr = start_id
     while curr:
         node = component_by_id[curr]
-        obj  = build_component(node, id_to_int[curr])
-        branch.append(ExecutionStep(kind=StepKind.LAYER, component_id=curr, obj=obj))
+        comp  = build_component(node, id_to_int[curr])
+        branch.append(ExecutionStep(kind=StepKind.LAYER, component_id=curr, comp=comp))
 
         # Continue only through nodes that are NOT merge points
         nexts = [t for t in out_edges.get(curr, [])
@@ -185,13 +185,15 @@ def _build_steps(
 
         elif n_in > 1:
             # Merge node
-            obj = build_component(component_by_id[cid]["data"], id_to_int[cid])
-            steps.append(ExecutionStep(kind=StepKind.MERGE, component_id=cid, obj=obj))
-
+            comp = build_component(component_by_id[cid]["data"], id_to_int[cid])
+            steps.append(ExecutionStep(kind=StepKind.MERGE, component_id=cid, comp=comp))
+        elif n_out > 1 and n_in > 1:
+            comp = build_component(component_by_id[cid]["data"], id_to_int[cid])
+            steps.append(ExecutionStep(kind=StepKind.MERGE_BRANCH, component_id=cid, comp=comp))
         else:
             # Ordinary sequential node
-            obj = build_component(component_by_id[cid]["data"], id_to_int[cid])
-            steps.append(ExecutionStep(kind=StepKind.LAYER, component_id=cid, obj=obj))
+            comp = build_component(component_by_id[cid]["data"], id_to_int[cid])
+            steps.append(ExecutionStep(kind=StepKind.LAYER, component_id=cid, comp=comp))
 
         i += 1
 

@@ -291,7 +291,7 @@ class RunSession:
                 if event.kind.name == "ERROR":
                     raise RuntimeError(event.error)
                 if event.kind.name == "BACKWARD_COMPLETE":
-                    break
+                    break 
 
             elapsed_ms = (time.monotonic() - t0) * 1000
 
