@@ -1,4 +1,7 @@
-from neural_network.Layers.Layer import Linear, Relu, LayerNorm, InputLayer
+from typing import List
+from neural_network.Layers.InputLayer import InputLayer
+from neural_network.Layers.Layer import Linear, LayerNorm
+from neural_network.Layers.activation_fns import Relu, Sigmoid, Tanh, LeakyRelu, Elu
 from neural_network.Nodes.Nodes import (
     AddNode, SubNode, MulNode, DivNode,
     SqNode, NegNode, SqrtNode,
@@ -91,3 +94,28 @@ def build_component(component: dict, component_id_int: int):
         return _build_node(component_id_int, component, config)
     
     raise ValueError(f"registry: unknown node kind '{kind}'")
+
+
+def build_observers(selected_names: List[str], run_id: int = 0) -> list:
+    """
+    Instantiate the requested observers for a run.
+
+    SignalStatsObserver is always included when any observer is requested
+    because it is the observer that runs anomaly detection.  If the user
+    deselects it from the UI, we still need it for AnomalyStore writes.
+    SignalShapeObserver is additive and optional.
+    """
+    if not selected_names:
+        return []
+
+    # Always include SignalStatsObserver (carries anomaly detection).
+    names = list(selected_names)
+    if "SignalStatsObserver" not in names:
+        names.insert(0, "SignalStatsObserver")
+
+    observers = []
+    for name in names:
+        cls = _OBSERVER_CLASSES.get(name)
+        if cls is not None:
+            observers.append(cls(run_id))
+    return observers

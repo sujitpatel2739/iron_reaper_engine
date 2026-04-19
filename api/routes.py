@@ -56,9 +56,8 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from backend.registries.registry import LAYER_TYPES, NODE_TYPES, OBSERVER_TYPES, build_observers
-from backend.builder.builder import build_network
-from backend.engine.engine import engine
-from backend.step_engine.step_engine import StepEngine
+from backend.engine.engine import Engine
+# from backend.step_engine.step_engine import StepEngine
 from backend.validation.validate_network import validate_network
 from backend.ironframe.ironframe import Tensor
 import backend.cache.CacheStore as CacheStore
@@ -357,115 +356,115 @@ async def run_full(websocket: WebSocket):
 # WebSocket — manual step mode  (unchanged)
 # ---------------------------------------------------------------------------
 
-@router.websocket("/run/step")
-async def run_step(websocket: WebSocket):
-    """
-    Manual step-mode session.
+# @router.websocket("/run/step")
+# async def run_step(websocket: WebSocket):
+#     """
+#     Manual step-mode session.
 
-    Client → Server: start | next | prev | follow | stop
-    Server → Client: ready | step_done | branch_point | branch_done |
-                     branches_complete | forward_complete | backward_complete | error
-    """
-    await websocket.accept()
+#     Client → Server: start | next | prev | follow | stop
+#     Server → Client: ready | step_done | branch_point | branch_done |
+#                      branches_complete | forward_complete | backward_complete | error
+#     """
+#     await websocket.accept()
 
-    engine:  Optional[StepEngine] = None
-    fwd_gen                       = None
-    bwd_gen                       = None
-    phase                         = "idle"
+#     engine:  Optional[StepEngine] = None
+#     fwd_gen                       = None
+#     bwd_gen                       = None
+#     phase                         = "idle"
 
-    def _make_input_from_dataset(dataset: dict) -> Tensor:
-        if dataset:
-            first = next(iter(dataset.values()))
-            return first
-        raise ValueError("No dataset provided for step mode.")
+#     def _make_input_from_dataset(dataset: dict) -> Tensor:
+#         if dataset:
+#             first = next(iter(dataset.values()))
+#             return first
+#         raise ValueError("No dataset provided for step mode.")
 
-    try:
-        while True:
-            raw    = await websocket.receive_text()
-            msg    = json.loads(raw)
-            action = msg.get("action")
+#     try:
+#         while True:
+#             raw    = await websocket.receive_text()
+#             msg    = json.loads(raw)
+#             action = msg.get("action")
 
-            if action == "start":
-                build_id     = msg.get("build_id")
-                run_config   = msg.get("run_config", {})
-                dataset_spec = msg.get("dataset_spec", {})
+#             if action == "start":
+#                 build_id     = msg.get("build_id")
+#                 run_config   = msg.get("run_config", {})
+#                 dataset_spec = msg.get("dataset_spec", {})
 
-                if not build_id:
-                    await websocket.send_json({"event": "error", "message": "No build_id."})
-                    continue
+#                 if not build_id:
+#                     await websocket.send_json({"event": "error", "message": "No build_id."})
+#                     continue
 
-                build = network_registry.get(build_id)
-                if build is None:
-                    await websocket.send_json({"event": "error", "message": f"Build '{build_id}' not found."})
-                    continue
+#                 build = network_registry.get(build_id)
+#                 if build is None:
+#                     await websocket.send_json({"event": "error", "message": f"Build '{build_id}' not found."})
+#                     continue
 
-                CacheStore.clear()
-                MetricStore.clear_run(run_config.get("run_id", 0))
+#                 CacheStore.clear()
+#                 MetricStore.clear_run(run_config.get("run_id", 0))
 
-                synthetic_specs = [
-                    SyntheticInput(**s)
-                    for s in dataset_spec.get("synthetic_inputs", [])
-                ]
-                try:
-                    dataset = build_dataset(synthetic_specs, {})
-                except ValueError as e:
-                    await websocket.send_json({"event": "error", "message": str(e)})
-                    continue
+#                 synthetic_specs = [
+#                     SyntheticInput(**s)
+#                     for s in dataset_spec.get("synthetic_inputs", [])
+#                 ]
+#                 try:
+#                     dataset = build_dataset(synthetic_specs, {})
+#                 except ValueError as e:
+#                     await websocket.send_json({"event": "error", "message": str(e)})
+#                     continue
 
-                engine  = StepEngine(build.plan)
-                x_input = _make_input_from_dataset(dataset)
-                x_input.requires_grad = True
-                engine.set_input(x_input)
+#                 engine  = StepEngine(build.plan)
+#                 x_input = _make_input_from_dataset(dataset)
+#                 x_input.requires_grad = True
+#                 engine.set_input(x_input)
 
-                fwd_gen = engine.step_forward()
-                phase   = "forward"
+#                 fwd_gen = engine.step_forward()
+#                 phase   = "forward"
 
-                first_node_id = build.graph["nodes"][0]["id"]
-                await websocket.send_json({"event": "ready", "layer_id": first_node_id})
+#                 first_node_id = build.graph["nodes"][0]["id"]
+#                 await websocket.send_json({"event": "ready", "layer_id": first_node_id})
 
-            elif action == "next" and phase == "forward" and fwd_gen is not None:
-                try:
-                    event = next(fwd_gen)
-                    await websocket.send_json(event.to_dict())
-                    if event.kind.name == "FORWARD_COMPLETE":
-                        phase   = "backward"
-                        bwd_gen = engine.step_backward()
-                except StopIteration:
-                    phase   = "backward"
-                    bwd_gen = engine.step_backward()
-                    await websocket.send_json({"event": "forward_complete"})
+#             elif action == "next" and phase == "forward" and fwd_gen is not None:
+#                 try:
+#                     event = next(fwd_gen)
+#                     await websocket.send_json(event.to_dict())
+#                     if event.kind.name == "FORWARD_COMPLETE":
+#                         phase   = "backward"
+#                         bwd_gen = engine.step_backward()
+#                 except StopIteration:
+#                     phase   = "backward"
+#                     bwd_gen = engine.step_backward()
+#                     await websocket.send_json({"event": "forward_complete"})
 
-            elif action == "prev" and phase == "backward" and bwd_gen is not None:
-                try:
-                    event = next(bwd_gen)
-                    await websocket.send_json(event.to_dict())
-                except StopIteration:
-                    await websocket.send_json({"event": "backward_complete"})
+#             elif action == "prev" and phase == "backward" and bwd_gen is not None:
+#                 try:
+#                     event = next(bwd_gen)
+#                     await websocket.send_json(event.to_dict())
+#                 except StopIteration:
+#                     await websocket.send_json({"event": "backward_complete"})
 
-            elif action == "follow" and fwd_gen is not None:
-                try:
-                    event = next(fwd_gen)
-                    await websocket.send_json(event.to_dict())
-                    if event.kind.name == "FORWARD_COMPLETE":
-                        phase   = "backward"
-                        bwd_gen = engine.step_backward()
-                except StopIteration:
-                    await websocket.send_json({"event": "forward_complete"})
+#             elif action == "follow" and fwd_gen is not None:
+#                 try:
+#                     event = next(fwd_gen)
+#                     await websocket.send_json(event.to_dict())
+#                     if event.kind.name == "FORWARD_COMPLETE":
+#                         phase   = "backward"
+#                         bwd_gen = engine.step_backward()
+#                 except StopIteration:
+#                     await websocket.send_json({"event": "forward_complete"})
 
-            elif action == "stop":
-                await websocket.send_json({"event": "stopped"})
-                break
+#             elif action == "stop":
+#                 await websocket.send_json({"event": "stopped"})
+#                 break
 
-            else:
-                await websocket.send_json({
-                    "event":   "error",
-                    "message": f"Unknown action '{action}' in phase '{phase}'.",
-                })
+#             else:
+#                 await websocket.send_json({
+#                     "event":   "error",
+#                     "message": f"Unknown action '{action}' in phase '{phase}'.",
+#                 })
 
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        try:
-            await websocket.send_json({"event": "error", "message": str(e)})
-        except Exception:
-            pass
+    # except WebSocketDisconnect:
+    #     pass
+    # except Exception as e:
+    #     try:
+    #         await websocket.send_json({"event": "error", "message": str(e)})
+    #     except Exception:
+    #         pass

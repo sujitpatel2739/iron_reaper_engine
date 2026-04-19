@@ -207,7 +207,7 @@ class RunSession:
 
         # Build int→string id map for snapshot keying
         self.id_to_node: Dict[int, str] = {
-            v: k for k, v in build.plan.id_to_int.items()
+            v: k for k, v in build.network.id_to_int.items()
         }
 
         # Compute n_batches from dataset — currently one tensor per input.
@@ -262,7 +262,7 @@ class RunSession:
             "n_epochs": self.n_epochs,
         })
 
-    async def _run_engine(self, websocket, , n_epochs: int) -> None:
+    async def _run_engine(self, websocket, n_epochs: int) -> None:
         """Run one epoch: forward + backward, then stream epoch_done."""
 
         engine = Engine(self.dataset)
